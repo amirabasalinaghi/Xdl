@@ -68,23 +68,65 @@ ask_default() {
   printf '%s' "${value}"
 }
 
+ask_yes_no_default() {
+  local key="$1"
+  local prompt="$2"
+  local default="$3"
+  local value=""
+  local env_value="${!key:-}"
+  if [[ -n "${env_value}" ]]; then
+    value="${env_value}"
+  else
+    if [[ -r /dev/tty ]]; then
+      read -r -p "${prompt} [${default}]: " value < /dev/tty
+    else
+      read -r -p "${prompt} [${default}]: " value
+    fi
+  fi
+  value="${value:-${default}}"
+  value="${value,,}"
+  [[ "${value}" == "y" || "${value}" == "yes" || "${value}" == "1" || "${value}" == "true" ]]
+}
+
+remove_previous_install() {
+  echo
+  echo "Removing previous ${SERVICE_NAME} installation..."
+  ${SUDO} systemctl disable --now "${SERVICE_NAME}" >/dev/null 2>&1 || true
+  ${SUDO} rm -f "${SERVICE_FILE}"
+  ${SUDO} rm -rf "${INSTALL_DIR}"
+  ${SUDO} rm -rf "${ENV_DIR}"
+  ${SUDO} systemctl daemon-reload
+}
+
 echo "== XDL Relay Linux Service Installer =="
 echo "This will install ${SERVICE_NAME} as a systemd service."
 echo
 
 REPO_DIR="$(ask_default "REPO_DIR" "Path to this repository" "$(pwd)")"
 X_USER_ID="$(ask_required "X_USER_ID" "X_USER_ID")"
+X_CLIENT_ID="$(ask_required "X_CLIENT_ID" "X_CLIENT_ID (X OAuth2 client ID)")"
 TELEGRAM_BOT_TOKEN="$(ask_required "TELEGRAM_BOT_TOKEN" "TELEGRAM_BOT_TOKEN")"
 TELEGRAM_CHAT_ID="$(ask_required "TELEGRAM_CHAT_ID" "TELEGRAM_CHAT_ID")"
+X_OAUTH_REDIRECT_URI="$(ask_default "X_OAUTH_REDIRECT_URI" "X_OAUTH_REDIRECT_URI" "https://localhost/callback")"
 POLL_INTERVAL_SECONDS="$(ask_default "POLL_INTERVAL_SECONDS" "POLL_INTERVAL_SECONDS" "30")"
 SERVICE_USER="$(ask_default "SERVICE_USER" "Linux user to run the service" "${DEFAULT_USER}")"
 SERVICE_GROUP="$(ask_default "SERVICE_GROUP" "Linux group to run the service" "${DEFAULT_GROUP}")"
 DB_PATH="$(ask_default "DB_PATH" "DB_PATH (inside ${INSTALL_DIR})" "${INSTALL_DIR}/relay.db")"
 MEDIA_DIR="$(ask_default "MEDIA_DIR" "MEDIA_DIR (inside ${INSTALL_DIR})" "${INSTALL_DIR}/media")"
+X_OAUTH_TOKEN_PATH="$(ask_default "X_OAUTH_TOKEN_PATH" "X_OAUTH_TOKEN_PATH (inside ${ENV_DIR})" "${ENV_DIR}/x-oauth-token.json")"
 
 if [[ ! -f "${REPO_DIR}/pyproject.toml" ]]; then
   echo "Could not find pyproject.toml in ${REPO_DIR}."
   exit 1
+fi
+
+if ${SUDO} test -f "${SERVICE_FILE}" || ${SUDO} test -d "${INSTALL_DIR}" || ${SUDO} test -f "${ENV_FILE}"; then
+  if ask_yes_no_default "REINSTALL" "Previous installation detected. Remove completely and reinstall?" "yes"; then
+    remove_previous_install
+  else
+    echo "Aborting install to avoid partial overwrite."
+    exit 1
+  fi
 fi
 
 echo
@@ -112,12 +154,24 @@ run_as_service_user "${SERVICE_USER}" python3 -m venv "${VENV_PATH}"
 echo "Installing application into virtual environment..."
 run_as_service_user "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install --upgrade pip
 run_as_service_user "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install "${REPO_DIR}"
+echo "Running interactive X login to generate user token..."
+run_as_service_user "${SERVICE_USER}" \
+  "${VENV_PATH}/bin/python" -m xdl_relay \
+  --x-login \
+  --client-id "${X_CLIENT_ID}" \
+  --redirect-uri "${X_OAUTH_REDIRECT_URI}" \
+  --token-path "${X_OAUTH_TOKEN_PATH}"
+${SUDO} chown "${SERVICE_USER}:${SERVICE_GROUP}" "${X_OAUTH_TOKEN_PATH}"
+${SUDO} chmod 600 "${X_OAUTH_TOKEN_PATH}"
 
 echo "Writing environment file to ${ENV_FILE}..."
 ${SUDO} tee "${ENV_FILE}" >/dev/null <<EOV
 X_USER_ID=${X_USER_ID}
+X_CLIENT_ID=${X_CLIENT_ID}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
 TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+X_OAUTH_REDIRECT_URI=${X_OAUTH_REDIRECT_URI}
+X_OAUTH_TOKEN_PATH=${X_OAUTH_TOKEN_PATH}
 POLL_INTERVAL_SECONDS=${POLL_INTERVAL_SECONDS}
 DB_PATH=${DB_PATH}
 MEDIA_DIR=${MEDIA_DIR}
