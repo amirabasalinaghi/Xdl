@@ -56,6 +56,24 @@ sudo systemctl status xdl-relay
 sudo journalctl -u xdl-relay -f
 ```
 
+
+## Web UI Dashboard
+Run a modern, full-featured dashboard with live metrics, filters, delivery logs, and manual trigger controls:
+
+```bash
+python -m xdl_relay --webui --host 0.0.0.0 --port 8080
+```
+
+Options:
+- `--no-poller`: opens the dashboard without background polling (manual trigger only).
+- `--host` and `--port`: customize bind address.
+
+Dashboard features:
+- Real-time relay health cards (sent/failed/pending/last-seen tweet).
+- Search + status filtering across repost events.
+- Delivery log viewer for Telegram message IDs.
+- One-click `Process once now` control for manual runs.
+
 ## Notes
 - This is a polling MVP with one account and one Telegram destination.
 - Ensure your usage complies with X and Telegram terms and local laws.

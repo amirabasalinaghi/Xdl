@@ -85,3 +85,64 @@ class RelayDB:
                 "UPDATE repost_events SET status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE repost_tweet_id = ?",
                 (error_message[:1000], repost_tweet_id),
             )
+
+    def get_overview(self) -> dict[str, int | str | None]:
+        with self._connect() as conn:
+            total_events = conn.execute("SELECT COUNT(1) AS c FROM repost_events").fetchone()["c"]
+            sent_events = conn.execute("SELECT COUNT(1) AS c FROM repost_events WHERE status = 'sent'").fetchone()["c"]
+            failed_events = conn.execute("SELECT COUNT(1) AS c FROM repost_events WHERE status = 'failed'").fetchone()["c"]
+            pending_events = conn.execute("SELECT COUNT(1) AS c FROM repost_events WHERE status = 'pending'").fetchone()["c"]
+            last_update_row = conn.execute("SELECT MAX(updated_at) AS m FROM repost_events").fetchone()
+
+        return {
+            "db_path": self.db_path,
+            "last_seen_tweet_id": self.get_last_seen_tweet_id(),
+            "total_events": int(total_events),
+            "sent_events": int(sent_events),
+            "failed_events": int(failed_events),
+            "pending_events": int(pending_events),
+            "last_update": last_update_row["m"] if last_update_row else None,
+        }
+
+    def list_events(self, limit: int = 100, status: str | None = None, text_query: str | None = None) -> list[dict[str, str | None]]:
+        where_clauses = []
+        params: list[object] = []
+
+        if status:
+            where_clauses.append("status = ?")
+            params.append(status)
+
+        if text_query:
+            where_clauses.append("(repost_tweet_id LIKE ? OR original_tweet_id LIKE ?)")
+            like = f"%{text_query}%"
+            params.extend([like, like])
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        params.append(limit)
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT repost_tweet_id, original_tweet_id, status, error_message, created_at, updated_at
+                FROM repost_events
+                {where_sql}
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+
+        return [dict(row) for row in rows]
+
+    def list_delivery_logs(self, limit: int = 50) -> list[dict[str, str | None]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT repost_tweet_id, telegram_message_ids, created_at
+                FROM delivery_logs
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
