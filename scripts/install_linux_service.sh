@@ -26,10 +26,20 @@ DEFAULT_USER="${SUDO_USER:-${USER}}"
 DEFAULT_GROUP="$(id -gn "${DEFAULT_USER}")"
 
 ask_required() {
-  local prompt="$1"
+  local key="$1"
+  local prompt="${2:-$1}"
   local value=""
+  local env_value="${!key:-}"
+  if [[ -n "${env_value}" ]]; then
+    printf '%s' "${env_value}"
+    return
+  fi
   while [[ -z "${value}" ]]; do
-    read -r -p "${prompt}: " value
+    if [[ -r /dev/tty ]]; then
+      read -r -p "${prompt}: " value < /dev/tty
+    else
+      read -r -p "${prompt}: " value
+    fi
     if [[ -z "${value}" ]]; then
       echo "This value is required."
     fi
@@ -38,10 +48,20 @@ ask_required() {
 }
 
 ask_default() {
-  local prompt="$1"
-  local default="$2"
+  local key="$1"
+  local prompt="$2"
+  local default="$3"
   local value=""
-  read -r -p "${prompt} [${default}]: " value
+  local env_value="${!key:-}"
+  if [[ -n "${env_value}" ]]; then
+    printf '%s' "${env_value}"
+    return
+  fi
+  if [[ -r /dev/tty ]]; then
+    read -r -p "${prompt} [${default}]: " value < /dev/tty
+  else
+    read -r -p "${prompt} [${default}]: " value
+  fi
   if [[ -z "${value}" ]]; then
     value="${default}"
   fi
@@ -52,16 +72,16 @@ echo "== XDL Relay Linux Service Installer =="
 echo "This will install ${SERVICE_NAME} as a systemd service."
 echo
 
-REPO_DIR="$(ask_default "Path to this repository" "$(pwd)")"
-X_BEARER_TOKEN="$(ask_required "X_BEARER_TOKEN")"
-X_USER_ID="$(ask_required "X_USER_ID")"
-TELEGRAM_BOT_TOKEN="$(ask_required "TELEGRAM_BOT_TOKEN")"
-TELEGRAM_CHAT_ID="$(ask_required "TELEGRAM_CHAT_ID")"
-POLL_INTERVAL_SECONDS="$(ask_default "POLL_INTERVAL_SECONDS" "30")"
-SERVICE_USER="$(ask_default "Linux user to run the service" "${DEFAULT_USER}")"
-SERVICE_GROUP="$(ask_default "Linux group to run the service" "${DEFAULT_GROUP}")"
-DB_PATH="$(ask_default "DB_PATH (inside ${INSTALL_DIR})" "${INSTALL_DIR}/relay.db")"
-MEDIA_DIR="$(ask_default "MEDIA_DIR (inside ${INSTALL_DIR})" "${INSTALL_DIR}/media")"
+REPO_DIR="$(ask_default "REPO_DIR" "Path to this repository" "$(pwd)")"
+X_BEARER_TOKEN="$(ask_required "X_BEARER_TOKEN" "X_BEARER_TOKEN")"
+X_USER_ID="$(ask_required "X_USER_ID" "X_USER_ID")"
+TELEGRAM_BOT_TOKEN="$(ask_required "TELEGRAM_BOT_TOKEN" "TELEGRAM_BOT_TOKEN")"
+TELEGRAM_CHAT_ID="$(ask_required "TELEGRAM_CHAT_ID" "TELEGRAM_CHAT_ID")"
+POLL_INTERVAL_SECONDS="$(ask_default "POLL_INTERVAL_SECONDS" "POLL_INTERVAL_SECONDS" "30")"
+SERVICE_USER="$(ask_default "SERVICE_USER" "Linux user to run the service" "${DEFAULT_USER}")"
+SERVICE_GROUP="$(ask_default "SERVICE_GROUP" "Linux group to run the service" "${DEFAULT_GROUP}")"
+DB_PATH="$(ask_default "DB_PATH" "DB_PATH (inside ${INSTALL_DIR})" "${INSTALL_DIR}/relay.db")"
+MEDIA_DIR="$(ask_default "MEDIA_DIR" "MEDIA_DIR (inside ${INSTALL_DIR})" "${INSTALL_DIR}/media")"
 
 if [[ ! -f "${REPO_DIR}/pyproject.toml" ]]; then
   echo "Could not find pyproject.toml in ${REPO_DIR}."
