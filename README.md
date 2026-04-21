@@ -49,11 +49,24 @@ Optional tuning environment variables:
 
 
 ## Install as a Linux service (guided installer)
+### One-command install (clone + guided setup)
+Replace `<REPO_URL>` with this repository URL, then run:
+
+```bash
+git clone <REPO_URL> /tmp/xdl-relay && bash /tmp/xdl-relay/scripts/install_linux_service.sh
+```
+
+This single command will:
+- Download the code
+- Launch the guided installer
+- Install required system packages (when possible)
+- Configure and start the `xdl-relay` systemd service
+
+### If you already cloned the repo
 Run the interactive installer script:
 
 ```bash
-chmod +x scripts/install_linux_service.sh
-./scripts/install_linux_service.sh
+bash scripts/install_linux_service.sh
 ```
 
 The installer will prompt you for all required values (`X_BEARER_TOKEN`, `X_USER_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) and optional settings, then it will:
