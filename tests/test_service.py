@@ -33,7 +33,6 @@ class TestServiceBehavior(unittest.TestCase):
     def test_failed_event_does_not_advance_last_seen(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(
-                x_bearer_token="x",
                 x_user_id="user",
                 telegram_bot_token="tg",
                 telegram_chat_id="chat",
@@ -65,7 +64,6 @@ class TestServiceBehavior(unittest.TestCase):
     def test_caption_contains_links(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(
-                x_bearer_token="x",
                 x_user_id="user",
                 telegram_bot_token="tg",
                 telegram_chat_id="chat",

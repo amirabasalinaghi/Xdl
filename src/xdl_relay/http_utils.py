@@ -59,8 +59,13 @@ def get_json(
     raise RuntimeError("get_json failed without an explicit error")
 
 
-def post_form_json(url: str, form_data: dict[str, str], timeout: int = 30) -> dict:
+def post_form_json(
+    url: str,
+    form_data: dict[str, str],
+    headers: dict[str, str] | None = None,
+    timeout: int = 30,
+) -> dict:
     data = urlencode(form_data).encode("utf-8")
-    request = Request(url, data=data, method="POST")
+    request = Request(url, data=data, headers=headers or {}, method="POST")
     with urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))

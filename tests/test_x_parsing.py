@@ -7,17 +7,19 @@ from xdl_relay.x_client import XClient
 
 class TestXParsing(unittest.TestCase):
     def test_convert_media_selects_best_variant(self) -> None:
-        client = XClient("token")
+        client = XClient()
         media = {
-            "media_key": "3_1",
+            "id_str": "3_1",
             "type": "video",
-            "variants": [
-                {"content_type": "video/mp4", "bit_rate": 256000, "url": "http://low.mp4"},
-                {"content_type": "video/mp4", "bit_rate": 832000, "url": "http://high.mp4"},
-            ],
+            "video_info": {
+                "variants": [
+                    {"content_type": "video/mp4", "bitrate": 256000, "url": "http://low.mp4"},
+                    {"content_type": "video/mp4", "bitrate": 832000, "url": "http://high.mp4"},
+                ]
+            },
         }
 
-        converted = client._convert_media(media, "3_1")
+        converted = client._convert_media(media)
         self.assertIsNotNone(converted)
         self.assertEqual(converted.url, "http://high.mp4")
 

@@ -12,7 +12,7 @@ This service monitors a single X account for new reposts/retweets, downloads att
 - Persist delivery state and failures.
 
 ## Setup
-1. Create an X developer app and get a bearer token.
+1. Find the numeric `X_USER_ID` for the X account you want to monitor.
 2. Create a Telegram bot with BotFather and capture bot token.
 3. Start a chat with your bot (or add bot to channel/group).
 4. Copy `.env.example` values into your environment.
@@ -31,7 +31,6 @@ pip install -e .
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
-export X_BEARER_TOKEN=...
 export X_USER_ID=...
 export TELEGRAM_BOT_TOKEN=...
 export TELEGRAM_CHAT_ID=...
@@ -76,7 +75,7 @@ Run the interactive installer script:
 bash scripts/install_linux_service.sh
 ```
 
-The installer will prompt you for all required values (`X_BEARER_TOKEN`, `X_USER_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) and optional settings, then it will:
+The installer will prompt you for all required values (`X_USER_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) and optional settings, then it will:
 - Create a virtualenv under `/opt/xdl-relay/.venv`
 - Install the package
 - Write `/etc/xdl-relay/xdl-relay.env`
@@ -84,7 +83,7 @@ The installer will prompt you for all required values (`X_BEARER_TOKEN`, `X_USER
 
 Notes:
 - The guided installer reads prompts from `/dev/tty`, so interactive prompts work even when launched via `curl ... | bash`.
-- You can also pre-set values with environment variables (for unattended installs), e.g. `X_BEARER_TOKEN`, `X_USER_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SERVICE_USER`, `SERVICE_GROUP`, `DB_PATH`, and `MEDIA_DIR`.
+- You can also pre-set values with environment variables (for unattended installs), e.g. `X_USER_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SERVICE_USER`, `SERVICE_GROUP`, `DB_PATH`, and `MEDIA_DIR`.
 
 After install:
 

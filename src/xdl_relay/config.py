@@ -6,7 +6,6 @@ import os
 
 @dataclass(frozen=True)
 class Settings:
-    x_bearer_token: str
     x_user_id: str
     telegram_bot_token: str
     telegram_chat_id: str
@@ -24,7 +23,6 @@ class Settings:
     @staticmethod
     def from_env() -> "Settings":
         required = {
-            "X_BEARER_TOKEN": os.getenv("X_BEARER_TOKEN", ""),
             "X_USER_ID": os.getenv("X_USER_ID", ""),
             "TELEGRAM_BOT_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN", ""),
             "TELEGRAM_CHAT_ID": os.getenv("TELEGRAM_CHAT_ID", ""),
@@ -34,7 +32,6 @@ class Settings:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
 
         return Settings(
-            x_bearer_token=required["X_BEARER_TOKEN"],
             x_user_id=required["X_USER_ID"],
             telegram_bot_token=required["TELEGRAM_BOT_TOKEN"],
             telegram_chat_id=required["TELEGRAM_CHAT_ID"],
