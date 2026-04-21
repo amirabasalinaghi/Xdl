@@ -17,6 +17,15 @@ This service monitors a single X account for new reposts/retweets, downloads att
 3. Start a chat with your bot (or add bot to channel/group).
 4. Copy `.env.example` values into your environment.
 
+### Required command
+```bash
+pip install -e .
+```
+
+### Installer download links
+- Linux service installer script: [`scripts/install_linux_service.sh`](scripts/install_linux_service.sh)
+- Install scripts folder: [`scripts/`](scripts/)
+
 ## Run
 ```bash
 python -m venv .venv
