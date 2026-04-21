@@ -18,7 +18,13 @@ class RelayService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.db = RelayDB(settings.db_path)
-        self.x_client = XClient(settings.x_bearer_token)
+        self.x_client = XClient(
+            settings.x_bearer_token,
+            timeout=settings.http_timeout_seconds,
+            retries=settings.http_retries,
+            backoff_seconds=settings.http_backoff_seconds,
+            max_pages=settings.x_max_pages,
+        )
         self.telegram_client = TelegramClient(settings.telegram_bot_token)
         self.media_dir = Path(settings.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
@@ -31,8 +37,16 @@ class RelayService:
 
         processed = 0
         for event in reposts:
-            processed += self._process_event(event)
-            self.db.set_last_seen_tweet_id(event.repost_tweet_id)
+            created, succeeded = self._process_event(event)
+            if created and succeeded:
+                processed += 1
+                self.db.set_last_seen_tweet_id(event.repost_tweet_id)
+            elif not created:
+                # event already exists, safe to advance cursor
+                self.db.set_last_seen_tweet_id(event.repost_tweet_id)
+            else:
+                logger.warning("Skipping last_seen update due to failed repost %s", event.repost_tweet_id)
+
         return processed
 
     def run_forever(self) -> None:
@@ -46,22 +60,29 @@ class RelayService:
                 logger.exception("Polling cycle failed: %s", exc)
             time.sleep(self.settings.poll_interval_seconds)
 
-    def _process_event(self, event: RepostEvent) -> int:
+    def _process_event(self, event: RepostEvent) -> tuple[bool, bool]:
         created = self.db.create_repost_event(event.repost_tweet_id, event.original_tweet_id)
         if not created:
-            return 0
+            return False, False
 
         try:
             files: list[Path] = []
             for idx, media in enumerate(event.media):
                 suffix = ".mp4" if media.media_type != "photo" else ".jpg"
                 path = self.media_dir / event.repost_tweet_id / f"{idx}_{media.media_key}{suffix}"
-                files.append(download_file(media.url, path))
+                files.append(
+                    download_file(
+                        media.url,
+                        path,
+                        timeout=self.settings.http_timeout_seconds,
+                        max_bytes=self.settings.max_media_bytes,
+                    )
+                )
 
             message_ids = self.telegram_client.send_media(self.settings.telegram_chat_id, files)
             self.db.mark_sent(event.repost_tweet_id, ",".join(str(mid) for mid in message_ids))
-            return 1
+            return True, True
         except Exception as exc:
             self.db.mark_failed(event.repost_tweet_id, str(exc))
             logger.exception("Failed processing repost %s", event.repost_tweet_id)
-            return 0
+            return True, False
