@@ -73,7 +73,6 @@ echo "This will install ${SERVICE_NAME} as a systemd service."
 echo
 
 REPO_DIR="$(ask_default "REPO_DIR" "Path to this repository" "$(pwd)")"
-X_BEARER_TOKEN="$(ask_required "X_BEARER_TOKEN" "X_BEARER_TOKEN")"
 X_USER_ID="$(ask_required "X_USER_ID" "X_USER_ID")"
 TELEGRAM_BOT_TOKEN="$(ask_required "TELEGRAM_BOT_TOKEN" "TELEGRAM_BOT_TOKEN")"
 TELEGRAM_CHAT_ID="$(ask_required "TELEGRAM_CHAT_ID" "TELEGRAM_CHAT_ID")"
@@ -116,7 +115,6 @@ run_as_service_user "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install "${REPO_DIR
 
 echo "Writing environment file to ${ENV_FILE}..."
 ${SUDO} tee "${ENV_FILE}" >/dev/null <<EOV
-X_BEARER_TOKEN=${X_BEARER_TOKEN}
 X_USER_ID=${X_USER_ID}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
 TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}

@@ -19,7 +19,6 @@ class RelayService:
         self.settings = settings
         self.db = RelayDB(settings.db_path)
         self.x_client = XClient(
-            settings.x_bearer_token,
             timeout=settings.http_timeout_seconds,
             retries=settings.http_retries,
             backoff_seconds=settings.http_backoff_seconds,
