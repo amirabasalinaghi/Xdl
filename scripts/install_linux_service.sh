@@ -7,6 +7,16 @@ else
   SUDO="sudo"
 fi
 
+run_as_service_user() {
+  local user="$1"
+  shift
+  if [[ "${EUID}" -eq 0 ]]; then
+    su -s /bin/bash - "${user}" -c "$(printf '%q ' "$@")"
+  else
+    sudo -u "${user}" "$@"
+  fi
+}
+
 SERVICE_NAME="xdl-relay"
 INSTALL_DIR="/opt/xdl-relay"
 ENV_DIR="/etc/xdl-relay"
@@ -78,11 +88,11 @@ ${SUDO} chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${INSTALL_DIR}"
 VENV_PATH="${INSTALL_DIR}/.venv"
 
 echo "Creating virtual environment at ${VENV_PATH}..."
-${SUDO} -u "${SERVICE_USER}" python3 -m venv "${VENV_PATH}"
+run_as_service_user "${SERVICE_USER}" python3 -m venv "${VENV_PATH}"
 
 echo "Installing application into virtual environment..."
-${SUDO} -u "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install --upgrade pip
-${SUDO} -u "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install "${REPO_DIR}"
+run_as_service_user "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install --upgrade pip
+run_as_service_user "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install "${REPO_DIR}"
 
 echo "Writing environment file to ${ENV_FILE}..."
 ${SUDO} tee "${ENV_FILE}" >/dev/null <<EOV

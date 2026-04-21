@@ -31,4 +31,7 @@ echo "Cloning ${REPO_URL} (${BRANCH})..."
 git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${REPO_DIR}"
 
 echo "Starting guided installer..."
-bash "${REPO_DIR}/scripts/install_linux_service.sh"
+(
+  cd "${REPO_DIR}"
+  bash "scripts/install_linux_service.sh"
+)
