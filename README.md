@@ -7,6 +7,8 @@ This service monitors a single X account for new reposts/retweets, downloads att
 - Dedupe by repost tweet ID using SQLite.
 - Download every reposted media item to local disk.
 - Send single or grouped media to Telegram.
+- Add rich captions with original/repost links.
+- Optional Telegram alert message when a repost relay fails.
 - Persist delivery state and failures.
 
 ## Setup
@@ -33,6 +35,8 @@ Optional tuning environment variables:
 - `HTTP_BACKOFF_SECONDS` (default `1.0`)
 - `MAX_MEDIA_BYTES` (default `52428800`)
 - `X_MAX_PAGES` (default `5`)
+- `TELEGRAM_INCLUDE_CAPTION` (default `1`)
+- `TELEGRAM_FAILURE_ALERTS` (default `1`)
 
 
 ## Install as a Linux service (guided installer)

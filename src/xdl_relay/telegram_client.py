@@ -11,32 +11,41 @@ class TelegramClient:
     def __init__(self, bot_token: str) -> None:
         self.base_url = f"https://api.telegram.org/bot{bot_token}"
 
-    def send_media(self, chat_id: str, files: list[Path]) -> list[int]:
+    def send_media(self, chat_id: str, files: list[Path], caption: str | None = None) -> list[int]:
         if len(files) == 1:
-            return [self._send_single(chat_id, files[0])]
-        return self._send_group(chat_id, files)
+            return [self._send_single(chat_id, files[0], caption)]
+        return self._send_group(chat_id, files, caption)
 
-    def _send_single(self, chat_id: str, file_path: Path) -> int:
+    def send_message(self, chat_id: str, text: str) -> int:
+        payload = self._multipart_request(
+            f"{self.base_url}/sendMessage",
+            fields={"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"},
+            files={},
+        )
+        return int(payload["result"]["message_id"])
+
+    def _send_single(self, chat_id: str, file_path: Path, caption: str | None = None) -> int:
         endpoint = "sendVideo" if self._is_video(file_path) else "sendPhoto"
         media_field = "video" if endpoint == "sendVideo" else "photo"
+        fields = {"chat_id": chat_id}
+        if caption:
+            fields["caption"] = caption[:1024]
         payload = self._multipart_request(
             f"{self.base_url}/{endpoint}",
-            fields={"chat_id": chat_id},
+            fields=fields,
             files={media_field: file_path},
         )
         return int(payload["result"]["message_id"])
 
-    def _send_group(self, chat_id: str, files: list[Path]) -> list[int]:
+    def _send_group(self, chat_id: str, files: list[Path], caption: str | None = None) -> list[int]:
         media = []
         attachments: dict[str, Path] = {}
         for idx, file in enumerate(files):
             attach_name = f"file{idx}"
-            media.append(
-                {
-                    "type": "video" if self._is_video(file) else "photo",
-                    "media": f"attach://{attach_name}",
-                }
-            )
+            item = {"type": "video" if self._is_video(file) else "photo", "media": f"attach://{attach_name}"}
+            if idx == 0 and caption:
+                item["caption"] = caption[:1024]
+            media.append(item)
             attachments[attach_name] = file
 
         payload = self._multipart_request(
