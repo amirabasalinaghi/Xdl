@@ -49,16 +49,23 @@ Optional tuning environment variables:
 
 
 ## Install as a Linux service (guided installer)
-### One-command install (clone + guided setup)
-Replace `<REPO_URL>` with this repository URL, then run:
+### One-command install (download + setup)
+Copy/paste this command (replace only the repo URL):
 
 ```bash
-git clone <REPO_URL> /tmp/xdl-relay && bash /tmp/xdl-relay/scripts/install_linux_service.sh
+curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/bootstrap_install.sh | bash -s -- <REPO_URL> main
+```
+
+Example:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/example/xdl-relay/main/scripts/bootstrap_install.sh | bash -s -- https://github.com/example/xdl-relay.git main
 ```
 
 This single command will:
-- Download the code
-- Launch the guided installer
+- Download the installer helper script
+- Clone the repository
+- Launch the guided setup
 - Install required system packages (when possible)
 - Configure and start the `xdl-relay` systemd service
 
