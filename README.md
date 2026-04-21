@@ -50,16 +50,16 @@ Optional tuning environment variables:
 
 ## Install as a Linux service (guided installer)
 ### One-command install (download + setup)
-Copy/paste this command (replace only the repo URL):
+Copy/paste this command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/bootstrap_install.sh | bash -s -- <REPO_URL> main
+curl -fsSL https://raw.githubusercontent.com/amirabasalinaghi/Xdl/main/scripts/bootstrap_install.sh | bash -s -- https://github.com/amirabasalinaghi/Xdl.git main
 ```
 
-Example:
+If you prefer the URL format without `.git`, this also works:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/example/xdl-relay/main/scripts/bootstrap_install.sh | bash -s -- https://github.com/example/xdl-relay.git main
+curl -fsSL https://raw.githubusercontent.com/amirabasalinaghi/Xdl/main/scripts/bootstrap_install.sh | bash -s -- https://github.com/amirabasalinaghi/Xdl main
 ```
 
 This single command will:
