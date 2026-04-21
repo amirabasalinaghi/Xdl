@@ -27,6 +27,13 @@ export TELEGRAM_CHAT_ID=...
 python -m xdl_relay
 ```
 
+Optional tuning environment variables:
+- `HTTP_TIMEOUT_SECONDS` (default `30`)
+- `HTTP_RETRIES` (default `3`)
+- `HTTP_BACKOFF_SECONDS` (default `1.0`)
+- `MAX_MEDIA_BYTES` (default `52428800`)
+- `X_MAX_PAGES` (default `5`)
+
 
 ## Install as a Linux service (guided installer)
 Run the interactive installer script:

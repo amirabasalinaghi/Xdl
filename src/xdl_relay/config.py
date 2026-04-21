@@ -13,6 +13,11 @@ class Settings:
     poll_interval_seconds: int = 30
     db_path: str = "relay.db"
     media_dir: str = "media"
+    http_timeout_seconds: int = 30
+    http_retries: int = 3
+    http_backoff_seconds: float = 1.0
+    max_media_bytes: int = 50 * 1024 * 1024
+    x_max_pages: int = 5
 
     @staticmethod
     def from_env() -> "Settings":
@@ -34,4 +39,9 @@ class Settings:
             poll_interval_seconds=int(os.getenv("POLL_INTERVAL_SECONDS", "30")),
             db_path=os.getenv("DB_PATH", "relay.db"),
             media_dir=os.getenv("MEDIA_DIR", "media"),
+            http_timeout_seconds=int(os.getenv("HTTP_TIMEOUT_SECONDS", "30")),
+            http_retries=int(os.getenv("HTTP_RETRIES", "3")),
+            http_backoff_seconds=float(os.getenv("HTTP_BACKOFF_SECONDS", "1.0")),
+            max_media_bytes=int(os.getenv("MAX_MEDIA_BYTES", str(50 * 1024 * 1024))),
+            x_max_pages=int(os.getenv("X_MAX_PAGES", "5")),
         )
