@@ -15,4 +15,6 @@ class RepostEvent:
     repost_tweet_id: str
     original_tweet_id: str
     original_author_id: str
+    repost_text: str
+    original_text: str
     media: list[MediaItem]

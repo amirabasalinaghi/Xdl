@@ -18,6 +18,8 @@ class Settings:
     http_backoff_seconds: float = 1.0
     max_media_bytes: int = 50 * 1024 * 1024
     x_max_pages: int = 5
+    telegram_include_caption: bool = True
+    telegram_failure_alerts: bool = True
 
     @staticmethod
     def from_env() -> "Settings":
@@ -44,4 +46,8 @@ class Settings:
             http_backoff_seconds=float(os.getenv("HTTP_BACKOFF_SECONDS", "1.0")),
             max_media_bytes=int(os.getenv("MAX_MEDIA_BYTES", str(50 * 1024 * 1024))),
             x_max_pages=int(os.getenv("X_MAX_PAGES", "5")),
+            telegram_include_caption=os.getenv("TELEGRAM_INCLUDE_CAPTION", "1").lower()
+            in {"1", "true", "yes", "on"},
+            telegram_failure_alerts=os.getenv("TELEGRAM_FAILURE_ALERTS", "1").lower()
+            in {"1", "true", "yes", "on"},
         )

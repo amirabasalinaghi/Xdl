@@ -27,7 +27,7 @@ class XClient:
         base_params = {
             "exclude": "replies",
             "max_results": "20",
-            "tweet.fields": "referenced_tweets,author_id,attachments",
+            "tweet.fields": "referenced_tweets,author_id,attachments,text",
             "expansions": "referenced_tweets.id,referenced_tweets.id.attachments.media_keys,attachments.media_keys",
             "media.fields": "type,url,variants",
         }
@@ -74,6 +74,8 @@ class XClient:
                             repost_tweet_id=tweet["id"],
                             original_tweet_id=original["id"],
                             original_author_id=original.get("author_id", "unknown"),
+                            repost_text=tweet.get("text", ""),
+                            original_text=original.get("text", ""),
                             media=media,
                         )
                     )

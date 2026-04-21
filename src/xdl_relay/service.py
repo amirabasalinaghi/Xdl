@@ -79,10 +79,36 @@ class RelayService:
                     )
                 )
 
-            message_ids = self.telegram_client.send_media(self.settings.telegram_chat_id, files)
+            message_ids = self.telegram_client.send_media(
+                self.settings.telegram_chat_id,
+                files,
+                caption=self._build_caption(event) if self.settings.telegram_include_caption else None,
+            )
             self.db.mark_sent(event.repost_tweet_id, ",".join(str(mid) for mid in message_ids))
             return True, True
         except Exception as exc:
             self.db.mark_failed(event.repost_tweet_id, str(exc))
+            if self.settings.telegram_failure_alerts:
+                self._notify_failure(event.repost_tweet_id, exc)
             logger.exception("Failed processing repost %s", event.repost_tweet_id)
             return True, False
+
+    def _build_caption(self, event: RepostEvent) -> str:
+        title = event.original_text or event.repost_text or "Repost media forwarded"
+        safe_title = " ".join(title.split())
+        if len(safe_title) > 280:
+            safe_title = f"{safe_title[:277]}..."
+        return (
+            f"{safe_title}\n\n"
+            f"Original: https://x.com/i/web/status/{event.original_tweet_id}\n"
+            f"Repost: https://x.com/i/web/status/{event.repost_tweet_id}"
+        )
+
+    def _notify_failure(self, repost_tweet_id: str, error: Exception) -> None:
+        try:
+            self.telegram_client.send_message(
+                self.settings.telegram_chat_id,
+                f"⚠️ Relay failed for repost {repost_tweet_id}: {str(error)[:350]}",
+            )
+        except Exception:
+            logger.exception("Failed to send Telegram failure alert for repost %s", repost_tweet_id)

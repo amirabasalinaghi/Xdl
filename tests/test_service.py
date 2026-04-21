@@ -18,8 +18,15 @@ class _FakeXClient:
 
 
 class _FailingTelegramClient:
-    def send_media(self, chat_id: str, files: list[Path]) -> list[int]:
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    def send_media(self, chat_id: str, files: list[Path], caption: str | None = None) -> list[int]:
         raise RuntimeError("telegram down")
+
+    def send_message(self, chat_id: str, text: str) -> int:
+        self.messages.append(text)
+        return 1
 
 
 class TestServiceBehavior(unittest.TestCase):
@@ -41,15 +48,44 @@ class TestServiceBehavior(unittest.TestCase):
                         repost_tweet_id="200",
                         original_tweet_id="100",
                         original_author_id="abc",
+                        repost_text="RT: something cool",
+                        original_text="something cool",
                         media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
                     )
                 ]
             )
-            service.telegram_client = _FailingTelegramClient()
+            telegram = _FailingTelegramClient()
+            service.telegram_client = telegram
 
             processed = service.process_once()
             self.assertEqual(processed, 0)
             self.assertIsNone(service.db.get_last_seen_tweet_id())
+            self.assertTrue(telegram.messages)
+
+    def test_caption_contains_links(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_bearer_token="x",
+                x_user_id="user",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            caption = service._build_caption(
+                RepostEvent(
+                    repost_tweet_id="200",
+                    original_tweet_id="100",
+                    original_author_id="abc",
+                    repost_text="",
+                    original_text="hello world",
+                    media=[],
+                )
+            )
+            self.assertIn("hello world", caption)
+            self.assertIn("https://x.com/i/web/status/100", caption)
+            self.assertIn("https://x.com/i/web/status/200", caption)
 
 
 if __name__ == "__main__":
