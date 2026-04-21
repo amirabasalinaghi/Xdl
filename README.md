@@ -27,6 +27,28 @@ export TELEGRAM_CHAT_ID=...
 python -m xdl_relay
 ```
 
+
+## Install as a Linux service (guided installer)
+Run the interactive installer script:
+
+```bash
+chmod +x scripts/install_linux_service.sh
+./scripts/install_linux_service.sh
+```
+
+The installer will prompt you for all required values (`X_BEARER_TOKEN`, `X_USER_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) and optional settings, then it will:
+- Create a virtualenv under `/opt/xdl-relay/.venv`
+- Install the package
+- Write `/etc/xdl-relay/xdl-relay.env`
+- Create and start a `systemd` service named `xdl-relay`
+
+After install:
+
+```bash
+sudo systemctl status xdl-relay
+sudo journalctl -u xdl-relay -f
+```
+
 ## Notes
 - This is a polling MVP with one account and one Telegram destination.
 - Ensure your usage complies with X and Telegram terms and local laws.
