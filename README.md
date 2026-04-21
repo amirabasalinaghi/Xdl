@@ -82,6 +82,10 @@ The installer will prompt you for all required values (`X_BEARER_TOKEN`, `X_USER
 - Write `/etc/xdl-relay/xdl-relay.env`
 - Create and start a `systemd` service named `xdl-relay`
 
+Notes:
+- The guided installer reads prompts from `/dev/tty`, so interactive prompts work even when launched via `curl ... | bash`.
+- You can also pre-set values with environment variables (for unattended installs), e.g. `X_BEARER_TOKEN`, `X_USER_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SERVICE_USER`, `SERVICE_GROUP`, `DB_PATH`, and `MEDIA_DIR`.
+
 After install:
 
 ```bash
