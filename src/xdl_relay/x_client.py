@@ -53,13 +53,16 @@ class XClient:
                 pages + 1,
                 pagination_token,
             )
-            payload = get_json(
-                url,
-                headers=self._auth_headers(),
-                timeout=self.timeout,
-                retries=self.retries,
-                backoff_seconds=self.backoff_seconds,
-            )
+            try:
+                payload = get_json(
+                    url,
+                    headers=self._auth_headers(),
+                    timeout=self.timeout,
+                    retries=self.retries,
+                    backoff_seconds=self.backoff_seconds,
+                )
+            except HTTPError as exc:
+                raise RuntimeError(self._build_timeline_error_message(endpoint_path, exc)) from exc
             tweets = payload.get("data", [])
             if not tweets:
                 logger.debug("No tweets returned endpoint=%s page=%s", endpoint_path, pages + 1)
@@ -83,6 +86,25 @@ class XClient:
         logger.info("Collected %s repost event(s) from endpoint=%s", len(events), endpoint_path)
 
         return sorted(events, key=lambda e: int(e.repost_tweet_id))
+
+    def _build_timeline_error_message(self, endpoint_path: str, exc: HTTPError) -> str:
+        base = (
+            f"X timeline request failed for {endpoint_path} with status {exc.code} ({exc.reason}). "
+            "Verify X_BEARER_TOKEN and X_USER_ID."
+        )
+        if exc.code in {401, 403}:
+            return (
+                f"{base} The token can belong to a different X user than the monitored account, "
+                "but your X app/project must have permission to read that target user's posts "
+                "(and the target account must be accessible/public to your app)."
+            )
+        if exc.code == 404:
+            return f"{base} Confirm the target user exists and X_USER_ID resolves to the correct account."
+        if exc.code == 429:
+            return (
+                f"{base} X rate limit hit. Increase POLL_INTERVAL_SECONDS or reduce X_PAGE_SIZE/X_MAX_PAGES."
+            )
+        return base
 
     def _timeline_params(self, since_id: str | None = None, pagination_token: str | None = None) -> dict[str, str]:
         params = {

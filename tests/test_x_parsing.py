@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 from xdl_relay.x_client import XClient
@@ -129,6 +130,21 @@ class TestXParsing(unittest.TestCase):
         self.assertEqual(events[0].original_tweet_id, "500")
         self.assertEqual(events[0].media[0].url, "https://cdn/x.jpg")
         mock_fetch.assert_called_once_with("500")
+
+    def test_get_new_reposts_timeline_401_has_actionable_error(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        http_error = HTTPError(
+            url="https://api.x.com/2/users/1/tweets",
+            code=401,
+            msg="Unauthorized",
+            hdrs=None,
+            fp=None,
+        )
+        with patch("xdl_relay.x_client.get_json", side_effect=http_error):
+            with self.assertRaises(RuntimeError) as ctx:
+                client.get_new_reposts("1")
+
+        self.assertIn("token can belong to a different x user", str(ctx.exception).lower())
 
 
 if __name__ == "__main__":
