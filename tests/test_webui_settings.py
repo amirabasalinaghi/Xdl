@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import unittest
+from unittest import mock
 
-from xdl_relay.webui import InMemoryLogHandler, _normalize_download_mode
+from xdl_relay.config import Settings
+from xdl_relay.webui import InMemoryLogHandler, _env_file_path, _normalize_download_mode, _write_env_file
 
 
 class TestWebUISettings(unittest.TestCase):
@@ -32,6 +36,25 @@ class TestWebUISettings(unittest.TestCase):
         warnings = handler.recent(limit=10, level="warning")
         self.assertEqual(len(warnings), 1)
         self.assertEqual(warnings[0]["level"], "WARNING")
+
+    def test_env_file_path_falls_back_to_dotenv_when_etc_unwritable(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch("xdl_relay.webui.os.access", return_value=False):
+                self.assertEqual(_env_file_path(), ".env")
+
+    def test_write_env_file_creates_parent_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            env_path = os.path.join(tmp_dir, "nested", "xdl.env")
+            with mock.patch.dict(os.environ, {"RELAY_ENV_FILE": env_path}):
+                _write_env_file(
+                    Settings(
+                        x_user_id="1",
+                        x_bearer_token="bearer",
+                        telegram_bot_token="bot",
+                        telegram_chat_id="chat",
+                    )
+                )
+            self.assertTrue(os.path.exists(env_path))
 
 
 if __name__ == "__main__":

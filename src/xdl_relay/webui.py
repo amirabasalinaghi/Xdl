@@ -531,12 +531,22 @@ class DashboardServer:
 
 
 def _env_file_path() -> str:
-    return os.getenv("RELAY_ENV_FILE", "/etc/xdl-relay/xdl-relay.env")
+    configured = os.getenv("RELAY_ENV_FILE")
+    if configured:
+        return configured
+    default_path = "/etc/xdl-relay/xdl-relay.env"
+    if os.access(os.path.dirname(default_path), os.W_OK):
+        return default_path
+    return ".env"
 
 
 def _write_env_file(settings: Settings) -> None:
+    path = _env_file_path()
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
     lines = [f"{k}={v}" for k, v in settings.to_env_dict().items()]
-    with open(_env_file_path(), "w", encoding="utf-8") as fp:
+    with open(path, "w", encoding="utf-8") as fp:
         fp.write("\n".join(lines) + "\n")
 
 
