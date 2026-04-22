@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlparse
 
 from xdl_relay.x_client import XClient
@@ -28,12 +29,19 @@ class TestXPagination(unittest.TestCase):
             "meta": {},
         }
 
-        with patch("xdl_relay.x_client.get_json", side_effect=[page1, page2]) as mock_get:
+        forbidden = HTTPError(
+            "https://api.x.com/2/users/1/timelines/reverse_chronological",
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=None,
+        )
+        with patch("xdl_relay.x_client.get_json", side_effect=[page1, page2, forbidden]) as mock_get:
             events = client.get_new_reposts("1")
 
         self.assertEqual(len(events), 2)
         self.assertEqual([e.repost_tweet_id for e in events], ["101", "102"])
-        self.assertEqual(mock_get.call_count, 2)
+        self.assertEqual(mock_get.call_count, 3)
 
     def test_get_new_reposts_uses_valid_expansions(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
