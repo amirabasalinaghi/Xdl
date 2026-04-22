@@ -104,6 +104,7 @@ HTML_PAGE = """<!doctype html>
       margin-bottom: 12px;
     }
     .field { display: flex; flex-direction: column; gap: 6px; }
+    .help { font-size: 0.76rem; color: #94a3b8; line-height: 1.35; }
     label { font-size: 0.82rem; color: #cbd5e1; }
     input, select, button {
       border-radius: 10px;
@@ -187,6 +188,42 @@ HTML_PAGE = """<!doctype html>
             <option value=\"video\">Download videos only</option>
           </select>
           <div class=\"saved-note\" id=\"saved_media_download_mode\"></div>
+        </div>
+        <div class=\"field\">
+          <label for=\"poll_interval_seconds\">Polling Interval (seconds)</label>
+          <input id=\"poll_interval_seconds\" type=\"number\" min=\"1\" step=\"1\" />
+          <div class=\"help\">How often the relay checks X for new reposts. Lower values are faster but can increase API usage.</div>
+          <div class=\"saved-note\" id=\"saved_poll_interval_seconds\"></div>
+        </div>
+        <div class=\"field\">
+          <label for=\"http_timeout_seconds\">HTTP Timeout (seconds)</label>
+          <input id=\"http_timeout_seconds\" type=\"number\" min=\"1\" step=\"1\" />
+          <div class=\"help\">Maximum time to wait for each API or media download request before timing out.</div>
+          <div class=\"saved-note\" id=\"saved_http_timeout_seconds\"></div>
+        </div>
+        <div class=\"field\">
+          <label for=\"http_retries\">HTTP Retries</label>
+          <input id=\"http_retries\" type=\"number\" min=\"1\" step=\"1\" />
+          <div class=\"help\">Number of retry attempts after a failed HTTP request.</div>
+          <div class=\"saved-note\" id=\"saved_http_retries\"></div>
+        </div>
+        <div class=\"field\">
+          <label for=\"http_backoff_seconds\">Retry Backoff (seconds)</label>
+          <input id=\"http_backoff_seconds\" type=\"number\" min=\"0\" step=\"0.1\" />
+          <div class=\"help\">Delay multiplier between retries. Example: 2 means each retry waits longer than the previous one.</div>
+          <div class=\"saved-note\" id=\"saved_http_backoff_seconds\"></div>
+        </div>
+        <div class=\"field\">
+          <label for=\"max_media_bytes\">Max Media Size (bytes)</label>
+          <input id=\"max_media_bytes\" type=\"number\" min=\"1\" step=\"1\" />
+          <div class=\"help\">Largest media file size allowed for download. Increase only if your system has enough disk and bandwidth.</div>
+          <div class=\"saved-note\" id=\"saved_max_media_bytes\"></div>
+        </div>
+        <div class=\"field\">
+          <label for=\"x_max_pages\">X API Max Pages</label>
+          <input id=\"x_max_pages\" type=\"number\" min=\"1\" step=\"1\" />
+          <div class=\"help\">Maximum number of API pages fetched per sync cycle. Higher values catch more history but use more API calls.</div>
+          <div class=\"saved-note\" id=\"saved_x_max_pages\"></div>
         </div>
       </div>
       <div class=\"toolbar\">
@@ -317,12 +354,24 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('telegram_bot_token').value = s.telegram_bot_token || '';
       document.getElementById('telegram_chat_id').value = s.telegram_chat_id || '';
       document.getElementById('media_download_mode').value = s.media_download_mode || 'both';
+      document.getElementById('poll_interval_seconds').value = s.poll_interval_seconds || 15;
+      document.getElementById('http_timeout_seconds').value = s.http_timeout_seconds || 60;
+      document.getElementById('http_retries').value = s.http_retries || 5;
+      document.getElementById('http_backoff_seconds').value = s.http_backoff_seconds || 2;
+      document.getElementById('max_media_bytes').value = s.max_media_bytes || 209715200;
+      document.getElementById('x_max_pages').value = s.x_max_pages || 64;
 
       setSavedHint('x_user_id', s.x_user_id ? `Saved: ${s.x_user_id}` : 'Not saved');
       setSavedHint('x_bearer_token', maskSecret(s.x_bearer_token));
       setSavedHint('telegram_bot_token', maskSecret(s.telegram_bot_token));
       setSavedHint('telegram_chat_id', s.telegram_chat_id ? `Saved: ${s.telegram_chat_id}` : 'Not saved');
       setSavedHint('media_download_mode', `Saved: ${s.media_download_mode || 'both'}`);
+      setSavedHint('poll_interval_seconds', `Saved: ${s.poll_interval_seconds || 15}s`);
+      setSavedHint('http_timeout_seconds', `Saved: ${s.http_timeout_seconds || 60}s`);
+      setSavedHint('http_retries', `Saved: ${s.http_retries || 5}`);
+      setSavedHint('http_backoff_seconds', `Saved: ${s.http_backoff_seconds || 2}s`);
+      setSavedHint('max_media_bytes', `Saved: ${s.max_media_bytes || 209715200}`);
+      setSavedHint('x_max_pages', `Saved: ${s.x_max_pages || 64}`);
     }
 
     async function loadSystemLogs() {
@@ -344,7 +393,13 @@ HTML_PAGE = """<!doctype html>
         x_bearer_token: document.getElementById('x_bearer_token').value.trim(),
         telegram_bot_token: document.getElementById('telegram_bot_token').value.trim(),
         telegram_chat_id: document.getElementById('telegram_chat_id').value.trim(),
-        media_download_mode: document.getElementById('media_download_mode').value
+        media_download_mode: document.getElementById('media_download_mode').value,
+        poll_interval_seconds: document.getElementById('poll_interval_seconds').value,
+        http_timeout_seconds: document.getElementById('http_timeout_seconds').value,
+        http_retries: document.getElementById('http_retries').value,
+        http_backoff_seconds: document.getElementById('http_backoff_seconds').value,
+        max_media_bytes: document.getElementById('max_media_bytes').value,
+        x_max_pages: document.getElementById('x_max_pages').value
       };
       await getJson('/api/settings', {
         method: 'POST',
@@ -531,14 +586,20 @@ class DashboardServer:
                         x_bearer_token=data.get("x_bearer_token") or relay_service.settings.x_bearer_token,
                         telegram_bot_token=data.get("telegram_bot_token") or relay_service.settings.telegram_bot_token,
                         telegram_chat_id=data.get("telegram_chat_id") or relay_service.settings.telegram_chat_id,
-                        poll_interval_seconds=relay_service.settings.poll_interval_seconds,
+                        poll_interval_seconds=_to_int_or_default(
+                            data.get("poll_interval_seconds"), relay_service.settings.poll_interval_seconds
+                        ),
                         db_path=relay_service.settings.db_path,
                         media_dir=relay_service.settings.media_dir,
-                        http_timeout_seconds=relay_service.settings.http_timeout_seconds,
-                        http_retries=relay_service.settings.http_retries,
-                        http_backoff_seconds=relay_service.settings.http_backoff_seconds,
-                        max_media_bytes=relay_service.settings.max_media_bytes,
-                        x_max_pages=relay_service.settings.x_max_pages,
+                        http_timeout_seconds=_to_int_or_default(
+                            data.get("http_timeout_seconds"), relay_service.settings.http_timeout_seconds
+                        ),
+                        http_retries=_to_int_or_default(data.get("http_retries"), relay_service.settings.http_retries),
+                        http_backoff_seconds=_to_float_or_default(
+                            data.get("http_backoff_seconds"), relay_service.settings.http_backoff_seconds, min_value=0.0
+                        ),
+                        max_media_bytes=_to_int_or_default(data.get("max_media_bytes"), relay_service.settings.max_media_bytes),
+                        x_max_pages=_to_int_or_default(data.get("x_max_pages"), relay_service.settings.x_max_pages),
                         media_download_mode=_normalize_download_mode(
                             data.get("media_download_mode"), relay_service.settings.media_download_mode
                         ),
@@ -601,4 +662,18 @@ def _to_int(value: str, default: int) -> int:
     try:
         return max(1, int(value))
     except ValueError:
+        return default
+
+
+def _to_int_or_default(value: object, default: int, min_value: int = 1) -> int:
+    try:
+        return max(min_value, int(str(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float_or_default(value: object, default: float, min_value: float = 0.0) -> float:
+    try:
+        return max(min_value, float(str(value)))
+    except (TypeError, ValueError):
         return default
