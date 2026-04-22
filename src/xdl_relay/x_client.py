@@ -34,17 +34,18 @@ class XClient:
             f"/users/{resolved_user_id}/tweets",
             since_id=since_id,
         )
-        if events:
-            return events
 
-        # Fallback: X docs describe reverse chronological timeline as including
-        # reposts/retweets in feed order. Some accounts/tokens do not surface
-        # fresh repost actions consistently through /users/{id}/tweets.
+        # Some accounts/tokens do not surface fresh repost actions consistently
+        # through /users/{id}/tweets. Query reverse chronological timeline as an
+        # additional source and merge results by repost tweet id.
         try:
-            return self._collect_reposts_for_endpoint(
+            fallback_events = self._collect_reposts_for_endpoint(
                 f"/users/{resolved_user_id}/timelines/reverse_chronological",
                 since_id=since_id,
             )
+            merged: dict[str, RepostEvent] = {event.repost_tweet_id: event for event in events}
+            merged.update({event.repost_tweet_id: event for event in fallback_events})
+            return sorted(merged.values(), key=lambda e: int(e.repost_tweet_id))
         except HTTPError as exc:
             # Application-only bearer tokens are rejected for this endpoint.
             # Keep polling functional by treating this fallback as optional.
