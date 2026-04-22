@@ -6,7 +6,7 @@ from pathlib import Path
 
 from xdl_relay.config import Settings
 from xdl_relay.db import RelayDB
-from xdl_relay.models import RepostEvent
+from xdl_relay.models import MediaItem, RepostEvent
 from xdl_relay.storage import download_file
 from xdl_relay.telegram_client import TelegramClient
 from xdl_relay.x_client import XClient
@@ -83,8 +83,16 @@ class RelayService:
             return False, False
 
         try:
+            selected_media = self._filter_media_by_mode(event.media)
+            if not selected_media:
+                self.db.mark_failed(
+                    event.repost_tweet_id,
+                    f"No media matched download mode '{self.settings.media_download_mode}'",
+                )
+                return True, False
+
             files: list[Path] = []
-            for idx, media in enumerate(event.media):
+            for idx, media in enumerate(selected_media):
                 suffix = ".mp4" if media.media_type != "photo" else ".jpg"
                 path = self.media_dir / event.repost_tweet_id / f"{idx}_{media.media_key}{suffix}"
                 files.append(
@@ -109,6 +117,14 @@ class RelayService:
                 self._notify_failure(event.repost_tweet_id, exc)
             logger.exception("Failed processing repost %s", event.repost_tweet_id)
             return True, False
+
+    def _filter_media_by_mode(self, media_items: list[MediaItem]) -> list[MediaItem]:
+        mode = (self.settings.media_download_mode or "both").lower()
+        if mode == "pic":
+            return [item for item in media_items if item.media_type == "photo"]
+        if mode == "video":
+            return [item for item in media_items if item.media_type != "photo"]
+        return media_items
 
     def _build_caption(self, event: RepostEvent) -> str:
         title = event.original_text or event.repost_text or "Repost media forwarded"

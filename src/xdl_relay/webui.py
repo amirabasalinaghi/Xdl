@@ -105,6 +105,11 @@ HTML_PAGE = """<!doctype html>
         <input id=\"x_client_id\" placeholder=\"X_CLIENT_ID\" />
         <input id=\"telegram_bot_token\" placeholder=\"TELEGRAM_BOT_TOKEN\" />
         <input id=\"telegram_chat_id\" placeholder=\"TELEGRAM_CHAT_ID\" />
+        <select id=\"media_download_mode\">
+          <option value=\"both\">Download: Pictures + Videos</option>
+          <option value=\"pic\">Download: Pictures only</option>
+          <option value=\"video\">Download: Videos only</option>
+        </select>
         <button id=\"save-settings\">Save settings</button>
       </div>
       <div class=\"muted\">Set IDs/keys here, then use Process once or enable polling.</div>
@@ -202,6 +207,7 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('x_client_id').value = s.x_client_id || '';
       document.getElementById('telegram_bot_token').value = s.telegram_bot_token || '';
       document.getElementById('telegram_chat_id').value = s.telegram_chat_id || '';
+      document.getElementById('media_download_mode').value = s.media_download_mode || 'both';
     }
 
     async function saveSettings() {
@@ -209,7 +215,8 @@ HTML_PAGE = """<!doctype html>
         x_user_id: document.getElementById('x_user_id').value.trim(),
         x_client_id: document.getElementById('x_client_id').value.trim(),
         telegram_bot_token: document.getElementById('telegram_bot_token').value.trim(),
-        telegram_chat_id: document.getElementById('telegram_chat_id').value.trim()
+        telegram_chat_id: document.getElementById('telegram_chat_id').value.trim(),
+        media_download_mode: document.getElementById('media_download_mode').value
       };
       await getJson('/api/settings', {
         method: 'POST',
@@ -368,6 +375,9 @@ class DashboardServer:
                         http_backoff_seconds=relay_service.settings.http_backoff_seconds,
                         max_media_bytes=relay_service.settings.max_media_bytes,
                         x_max_pages=relay_service.settings.x_max_pages,
+                        media_download_mode=_normalize_download_mode(
+                            data.get("media_download_mode"), relay_service.settings.media_download_mode
+                        ),
                         telegram_include_caption=relay_service.settings.telegram_include_caption,
                         telegram_failure_alerts=relay_service.settings.telegram_failure_alerts,
                     )
@@ -397,6 +407,13 @@ def _write_env_file(settings: Settings) -> None:
 
 def _settings_payload(settings: Settings) -> dict[str, str]:
     return settings.to_env_dict()
+
+
+def _normalize_download_mode(raw_mode: str | None, default: str) -> str:
+    mode = (raw_mode or default or "both").lower()
+    if mode in {"pic", "video", "both"}:
+        return mode
+    return "both"
 
 def _to_int(value: str, default: int) -> int:
     try:
