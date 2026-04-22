@@ -586,7 +586,11 @@ HTML_PAGE = """<!doctype html>
       try {
         const result = await getJson('/api/process-once', { method: 'POST' });
         await refreshAll();
-        toast(`Processed ${result.processed} repost event(s).`, "success");
+        toast(
+          `Refresh saw ${result.fetched} repost(s) total: ${result.pics} pic(s), ${result.videos} video(s), ` +
+          `${result.new} new. Successfully processed: ${result.processed}.`,
+          "success"
+        );
       } catch (err) {
         toast(err.message, "error");
       } finally {
@@ -602,7 +606,7 @@ HTML_PAGE = """<!doctype html>
         const result = await getJson('/api/force-refresh-retry', { method: 'POST' });
         await refreshAll();
         toast(
-          `Force refresh fetched ${result.fetched} repost(s). ` +
+          `Force refresh saw ${result.fetched} repost(s) total: ${result.pics} pic(s), ${result.videos} video(s), ${result.new} new. ` +
           `Retried ${result.retried} unsent and recovered ${result.retried_success}. ` +
           `Newly processed: ${result.new_processed}.`,
           "success"
@@ -773,8 +777,8 @@ class DashboardServer:
                 parsed = urlparse(self.path)
                 if parsed.path == "/api/process-once":
                     try:
-                        processed = relay_service.process_once()
-                        self._json_response({"processed": processed})
+                        result = relay_service.process_once_with_stats()
+                        self._json_response(result)
                     except Exception as exc:
                         logger.exception("Manual process_once failed: %s", exc)
                         self._json_response({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)

@@ -162,11 +162,56 @@ class TestServiceBehavior(unittest.TestCase):
                 result = service.force_refresh_and_retry_unsent()
 
             self.assertEqual(result["fetched"], 1)
+            self.assertEqual(result["pics"], 1)
+            self.assertEqual(result["videos"], 0)
             self.assertEqual(result["retried"], 1)
             self.assertEqual(result["retried_success"], 1)
+            self.assertEqual(result["new"], 0)
             self.assertEqual(result["new_processed"], 0)
             status = service.db.list_events(limit=10, status=None, text_query="200")[0]["status"]
             self.assertEqual(status, "sent")
+
+    def test_process_once_with_stats_reports_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            service.x_client = _FakeXClient(
+                [
+                    RepostEvent(
+                        repost_tweet_id="200",
+                        original_tweet_id="100",
+                        original_author_id="abc",
+                        repost_text="RT 1",
+                        original_text="one",
+                        media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
+                    ),
+                    RepostEvent(
+                        repost_tweet_id="201",
+                        original_tweet_id="101",
+                        original_author_id="def",
+                        repost_text="RT 2",
+                        original_text="two",
+                        media=[MediaItem(media_key="m2", media_type="video", url="https://example.com/v.mp4")],
+                    ),
+                ]
+            )
+            service.telegram_client = _SuccessfulTelegramClient()
+
+            with mock.patch("xdl_relay.service.download_file", return_value=Path(tmp) / "a.jpg"):
+                result = service.process_once_with_stats()
+
+            self.assertEqual(result["fetched"], 2)
+            self.assertEqual(result["pics"], 1)
+            self.assertEqual(result["videos"], 1)
+            self.assertEqual(result["new"], 2)
+            self.assertEqual(result["processed"], 2)
 
     def test_process_once_runs_catch_up_scan_when_since_id_returns_empty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

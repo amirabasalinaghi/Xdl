@@ -83,6 +83,50 @@ class RelayService:
 
             return processed
 
+    def process_once_with_stats(self) -> dict[str, int]:
+        with self._process_lock:
+            since_id = self.db.get_last_seen_tweet_id()
+            reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id)
+            if since_id:
+                reposts = self._filter_reposts_newer_than_cursor(reposts, since_id)
+            if not reposts and since_id:
+                logger.info(
+                    "No reposts returned for since_id=%s; running catch-up scan without cursor to avoid missing recent reposts.",
+                    since_id,
+                )
+                recent_reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
+                reposts = self._filter_reposts_newer_than_cursor(recent_reposts, since_id)
+
+            pic_count, video_count = self._count_media_types(reposts)
+            if not reposts:
+                return {"fetched": 0, "pics": 0, "videos": 0, "new": 0, "processed": 0}
+
+            new_count = 0
+            processed = 0
+            for event in reposts:
+                logger.info(
+                    "Processing repost=%s original=%s media_count=%s",
+                    event.repost_tweet_id,
+                    event.original_tweet_id,
+                    len(event.media),
+                )
+                created, succeeded = self._process_event(event)
+                if created:
+                    new_count += 1
+                if succeeded:
+                    processed += 1
+                if not succeeded:
+                    logger.warning("Repost %s failed delivery; cursor will still advance", event.repost_tweet_id)
+                self.db.set_last_seen_tweet_id(event.repost_tweet_id)
+
+            return {
+                "fetched": len(reposts),
+                "pics": pic_count,
+                "videos": video_count,
+                "new": new_count,
+                "processed": processed,
+            }
+
     def _filter_reposts_newer_than_cursor(self, reposts: list[RepostEvent], since_id: str) -> list[RepostEvent]:
         def _as_int(value: str) -> int | None:
             return int(value) if value.isdigit() else None
@@ -102,11 +146,21 @@ class RelayService:
         with self._process_lock:
             unsent_repost_ids = set(self.db.list_unsent_repost_ids())
             reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
+            pic_count, video_count = self._count_media_types(reposts)
             if not reposts:
-                return {"fetched": 0, "retried": 0, "retried_success": 0, "new_processed": 0}
+                return {
+                    "fetched": 0,
+                    "pics": 0,
+                    "videos": 0,
+                    "retried": 0,
+                    "retried_success": 0,
+                    "new": 0,
+                    "new_processed": 0,
+                }
 
             retried = 0
             retried_success = 0
+            new_count = 0
             new_processed = 0
 
             for event in reposts:
@@ -117,13 +171,18 @@ class RelayService:
                     continue
 
                 created, succeeded = self._process_event(event)
+                if created:
+                    new_count += 1
                 if created and succeeded:
                     new_processed += 1
 
             return {
                 "fetched": len(reposts),
+                "pics": pic_count,
+                "videos": video_count,
                 "retried": retried,
                 "retried_success": retried_success,
+                "new": new_count,
                 "new_processed": new_processed,
             }
 
@@ -205,6 +264,17 @@ class RelayService:
         if mode == "video":
             return [item for item in media_items if item.media_type != "photo"]
         return media_items
+
+    def _count_media_types(self, reposts: list[RepostEvent]) -> tuple[int, int]:
+        pics = 0
+        videos = 0
+        for event in reposts:
+            for media in event.media:
+                if media.media_type == "photo":
+                    pics += 1
+                else:
+                    videos += 1
+        return pics, videos
 
     def _build_caption(self, event: RepostEvent) -> str:
         title = event.original_text or event.repost_text or "Repost media forwarded"
