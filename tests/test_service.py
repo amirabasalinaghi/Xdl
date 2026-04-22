@@ -199,6 +199,35 @@ class TestServiceBehavior(unittest.TestCase):
             self.assertEqual(fake_x_client.calls, ["200", None])
             self.assertEqual(service.db.get_last_seen_tweet_id(), "205")
 
+    def test_process_once_ignores_reposts_older_than_cursor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            service.db.set_last_seen_tweet_id("500")
+            stale_event = RepostEvent(
+                repost_tweet_id="450",
+                original_tweet_id="100",
+                original_author_id="abc",
+                repost_text="old repost",
+                original_text="old post",
+                media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
+            )
+            service.x_client = _FakeXClient([stale_event])
+            service.telegram_client = _SuccessfulTelegramClient()
+
+            with mock.patch("xdl_relay.service.download_file", return_value=Path(tmp) / "a.jpg"):
+                processed = service.process_once()
+
+            self.assertEqual(processed, 0)
+            self.assertEqual(service.db.get_last_seen_tweet_id(), "500")
+
 
 if __name__ == "__main__":
     unittest.main()

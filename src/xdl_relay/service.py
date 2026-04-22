@@ -46,6 +46,8 @@ class RelayService:
     def process_once(self) -> int:
         since_id = self.db.get_last_seen_tweet_id()
         reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id)
+        if since_id:
+            reposts = self._filter_reposts_newer_than_cursor(reposts, since_id)
         if not reposts and since_id:
             logger.info(
                 "No reposts returned for since_id=%s; running catch-up scan without cursor to avoid missing recent reposts.",
