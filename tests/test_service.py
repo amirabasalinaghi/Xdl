@@ -30,7 +30,7 @@ class _FailingTelegramClient:
 
 
 class TestServiceBehavior(unittest.TestCase):
-    def test_failed_event_does_not_advance_last_seen(self) -> None:
+    def test_failed_event_advances_last_seen(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(
                 x_user_id="user",
@@ -59,7 +59,7 @@ class TestServiceBehavior(unittest.TestCase):
 
             processed = service.process_once()
             self.assertEqual(processed, 0)
-            self.assertIsNone(service.db.get_last_seen_tweet_id())
+            self.assertEqual(service.db.get_last_seen_tweet_id(), "200")
             self.assertTrue(telegram.messages)
 
     def test_caption_contains_links(self) -> None:

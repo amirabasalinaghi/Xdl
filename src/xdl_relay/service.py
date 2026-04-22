@@ -51,14 +51,13 @@ class RelayService:
         processed = 0
         for event in reposts:
             created, succeeded = self._process_event(event)
-            if created and succeeded:
+            if succeeded:
                 processed += 1
-                self.db.set_last_seen_tweet_id(event.repost_tweet_id)
-            elif not created:
-                # event already exists, safe to advance cursor
-                self.db.set_last_seen_tweet_id(event.repost_tweet_id)
-            else:
-                logger.warning("Skipping last_seen update due to failed repost %s", event.repost_tweet_id)
+            if not succeeded:
+                logger.warning("Repost %s failed delivery; cursor will still advance", event.repost_tweet_id)
+            # Always advance cursor for fetched events so one failing repost
+            # does not block discovering newer reposts.
+            self.db.set_last_seen_tweet_id(event.repost_tweet_id)
 
         return processed
 
