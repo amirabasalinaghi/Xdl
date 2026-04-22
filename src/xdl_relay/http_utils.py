@@ -47,6 +47,7 @@ def get_json(
                 body_snippet = exc.read(400).decode("utf-8", errors="replace")
             except Exception:
                 body_snippet = "<unreadable>"
+            setattr(exc, "xdl_body_snippet", body_snippet)
             logger.warning(
                 "HTTPError from GET %s attempt=%s/%s status=%s reason=%s body=%s",
                 url,

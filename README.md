@@ -131,3 +131,7 @@ Dashboard features:
   - Confirm token is valid and not expired/revoked.
   - Confirm the target account is public (or otherwise accessible to your app/token context).
   - Confirm your app has the required read scopes/permissions (`tweet.read`, `users.read`) and project access level needed for timeline endpoints.
+- If logs show `Unsupported Authentication` for `/users/{id}/timelines/reverse_chronological`:
+  - X rejects OAuth 2.0 **Application-Only** bearer tokens for that endpoint.
+  - Fix option A: switch to user-context auth (OAuth 2.0 User Context or OAuth 1.0a User Context).
+  - Fix option B: keep application-only bearer auth and rely on `/users/{id}/tweets` polling (the relay now auto-disables reverse timeline retries after this specific error).

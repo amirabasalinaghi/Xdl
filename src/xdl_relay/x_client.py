@@ -29,6 +29,7 @@ class XClient:
         self.max_pages = max_pages
         self.page_size = min(100, max(5, page_size))
         self.bearer_token = bearer_token
+        self._reverse_timeline_enabled = True
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
         resolved_user_id = self._resolve_user_id(user_id)
@@ -39,13 +40,23 @@ class XClient:
         )
         timeline_events: list[RepostEvent] = []
         timeline_endpoint = f"/users/{resolved_user_id}/timelines/reverse_chronological"
-        try:
-            timeline_events = self._collect_reposts_for_endpoint(
-                timeline_endpoint,
-                since_id=since_id,
-            )
-        except RuntimeError as exc:
-            logger.warning("Reverse timeline request failed for endpoint=%s: %s", timeline_endpoint, exc)
+        if self._reverse_timeline_enabled:
+            try:
+                timeline_events = self._collect_reposts_for_endpoint(
+                    timeline_endpoint,
+                    since_id=since_id,
+                )
+            except RuntimeError as exc:
+                message = str(exc)
+                if "OAuth 2.0 User Context" in message:
+                    self._reverse_timeline_enabled = False
+                    logger.warning(
+                        "Reverse timeline endpoint disabled for subsequent polls because app-only bearer "
+                        "authentication is not supported: %s",
+                        message,
+                    )
+                else:
+                    logger.warning("Reverse timeline request failed for endpoint=%s: %s", timeline_endpoint, message)
 
         merged_by_id = {event.repost_tweet_id: event for event in profile_events}
         merged_by_id.update({event.repost_tweet_id: event for event in timeline_events})
@@ -106,10 +117,23 @@ class XClient:
         return sorted(events, key=lambda e: int(e.repost_tweet_id))
 
     def _build_timeline_error_message(self, endpoint_path: str, exc: HTTPError) -> str:
+        body_snippet = str(getattr(exc, "xdl_body_snippet", "") or "")
+        if not body_snippet:
+            try:
+                if exc.fp and hasattr(exc.fp, "read"):
+                    body_snippet = exc.fp.read(400).decode("utf-8", errors="replace")
+            except Exception:
+                body_snippet = ""
         base = (
             f"X timeline request failed for {endpoint_path} with status {exc.code} ({exc.reason}). "
             "Verify X_BEARER_TOKEN and X_USER_ID."
         )
+        if exc.code == 403 and "unsupported-authentication" in body_snippet.lower():
+            return (
+                f"{base} This endpoint requires user-context auth (OAuth 2.0 User Context or OAuth 1.0a User Context), "
+                "but the current token appears to be OAuth 2.0 app-only bearer auth. Use /users/:id/tweets only, "
+                "or switch to a user-context access token."
+            )
         if exc.code in {401, 403}:
             return (
                 f"{base} The token can belong to a different X user than the monitored account, "
