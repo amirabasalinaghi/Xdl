@@ -143,7 +143,7 @@ HTML_PAGE = """<!doctype html>
       background: #1e293b;
       border: 1px solid #334155;
     }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; min-width: 620px; }
     th, td { text-align: left; padding: 10px; border-bottom: 1px solid #1e293b; font-size: 0.92rem; }
     thead th { position: sticky; top: 0; background: #0b1222; z-index: 1; }
     tbody tr:hover { background: rgba(51, 65, 85, 0.25); }
@@ -210,6 +210,12 @@ HTML_PAGE = """<!doctype html>
     @keyframes spin { to { transform: rotate(360deg); } }
     .copy-btn { margin-left: 6px; font-size:.72rem; padding: 2px 6px; border-radius: 6px; background:#1e293b; border:1px solid #334155; }
     .empty-state { text-align:center; color:#94a3b8; padding:14px; }
+    .table-scroll {
+      overflow: auto;
+      max-height: 360px;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+    }
   </style>
 </head>
 <body>
@@ -332,7 +338,7 @@ HTML_PAGE = """<!doctype html>
           <input id=\"query\" placeholder=\"Search tweet id (Press / to focus)\" />
           <button id=\"refresh\">Refresh</button>
         </div>
-        <div style=\"overflow:auto\">
+        <div class=\"table-scroll\">
           <table>
             <thead>
               <tr><th>Repost ID</th><th>Original ID</th><th>Status</th><th>Updated</th><th>Error</th></tr>
@@ -344,7 +350,7 @@ HTML_PAGE = """<!doctype html>
 
       <section class=\"card\">
         <h3>Telegram Deliveries</h3>
-        <div style=\"overflow:auto\">
+        <div class=\"table-scroll\">
           <table>
             <thead><tr><th>Repost</th><th>Message IDs</th><th>At</th></tr></thead>
             <tbody id=\"logs\"></tbody>
