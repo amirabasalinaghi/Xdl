@@ -146,6 +146,30 @@ class TestXParsing(unittest.TestCase):
         self.assertEqual(mock_get.call_count, 3)
         self.assertIn("/users/1/tweets?", mock_get.call_args_list[2].args[0])
 
+    def test_extract_repost_events_fetches_missing_referenced_tweet(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [{"id": "100", "text": "repost", "referenced_tweets": [{"type": "retweeted", "id": "500"}]}],
+            "includes": {"tweets": [], "media": []},
+            "meta": {},
+        }
+
+        with patch.object(
+            client,
+            "_fetch_tweet_with_media",
+            return_value=(
+                {"id": "500", "author_id": "99", "text": "orig", "attachments": {"media_keys": ["3_1"]}},
+                {"3_1": {"media_key": "3_1", "type": "photo", "url": "https://cdn/x.jpg"}},
+            ),
+        ) as mock_fetch:
+            events = client._extract_repost_events(payload["data"], payload)
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].repost_tweet_id, "100")
+        self.assertEqual(events[0].original_tweet_id, "500")
+        self.assertEqual(events[0].media[0].url, "https://cdn/x.jpg")
+        mock_fetch.assert_called_once_with("500")
+
 
 if __name__ == "__main__":
     unittest.main()
