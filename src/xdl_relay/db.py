@@ -83,7 +83,7 @@ class RelayDB:
         with self._connect() as conn:
             conn.execute(
                 "UPDATE repost_events SET status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE repost_tweet_id = ?",
-                (error_message[:1000], repost_tweet_id),
+                (error_message[:4000], repost_tweet_id),
             )
 
     def get_overview(self) -> dict[str, int | str | None]:
@@ -104,7 +104,7 @@ class RelayDB:
             "last_update": last_update_row["m"] if last_update_row else None,
         }
 
-    def list_events(self, limit: int = 100, status: str | None = None, text_query: str | None = None) -> list[dict[str, str | None]]:
+    def list_events(self, limit: int = 500, status: str | None = None, text_query: str | None = None) -> list[dict[str, str | None]]:
         where_clauses = []
         params: list[object] = []
 
@@ -134,7 +134,7 @@ class RelayDB:
 
         return [dict(row) for row in rows]
 
-    def list_delivery_logs(self, limit: int = 50) -> list[dict[str, str | None]]:
+    def list_delivery_logs(self, limit: int = 200) -> list[dict[str, str | None]]:
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -147,7 +147,7 @@ class RelayDB:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def list_unsent_repost_ids(self, limit: int = 500) -> list[str]:
+    def list_unsent_repost_ids(self, limit: int = 2000) -> list[str]:
         with self._connect() as conn:
             rows = conn.execute(
                 """

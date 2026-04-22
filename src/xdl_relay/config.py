@@ -10,14 +10,14 @@ class Settings:
     x_bearer_token: str
     telegram_bot_token: str
     telegram_chat_id: str
-    poll_interval_seconds: int = 30
+    poll_interval_seconds: int = 15
     db_path: str = "relay.db"
     media_dir: str = "media"
-    http_timeout_seconds: int = 30
-    http_retries: int = 3
-    http_backoff_seconds: float = 1.0
-    max_media_bytes: int = 0
-    x_max_pages: int = 32
+    http_timeout_seconds: int = 60
+    http_retries: int = 5
+    http_backoff_seconds: float = 2.0
+    max_media_bytes: int = 200 * 1024 * 1024
+    x_max_pages: int = 64
     media_download_mode: str = "both"
     telegram_include_caption: bool = True
     telegram_failure_alerts: bool = True
@@ -39,14 +39,14 @@ class Settings:
             x_bearer_token=required["X_BEARER_TOKEN"],
             telegram_bot_token=required["TELEGRAM_BOT_TOKEN"],
             telegram_chat_id=required["TELEGRAM_CHAT_ID"],
-            poll_interval_seconds=int(os.getenv("POLL_INTERVAL_SECONDS", "30")),
+            poll_interval_seconds=int(os.getenv("POLL_INTERVAL_SECONDS", "15")),
             db_path=os.getenv("DB_PATH", "relay.db"),
             media_dir=os.getenv("MEDIA_DIR", "media"),
-            http_timeout_seconds=int(os.getenv("HTTP_TIMEOUT_SECONDS", "30")),
-            http_retries=int(os.getenv("HTTP_RETRIES", "3")),
-            http_backoff_seconds=float(os.getenv("HTTP_BACKOFF_SECONDS", "1.0")),
-            max_media_bytes=int(os.getenv("MAX_MEDIA_BYTES", "0")),
-            x_max_pages=int(os.getenv("X_MAX_PAGES", "32")),
+            http_timeout_seconds=int(os.getenv("HTTP_TIMEOUT_SECONDS", "60")),
+            http_retries=int(os.getenv("HTTP_RETRIES", "5")),
+            http_backoff_seconds=float(os.getenv("HTTP_BACKOFF_SECONDS", "2.0")),
+            max_media_bytes=int(os.getenv("MAX_MEDIA_BYTES", str(200 * 1024 * 1024))),
+            x_max_pages=int(os.getenv("X_MAX_PAGES", "64")),
             media_download_mode=os.getenv("MEDIA_DOWNLOAD_MODE", "both").lower(),
             telegram_include_caption=os.getenv("TELEGRAM_INCLUDE_CAPTION", "1").lower()
             in {"1", "true", "yes", "on"},

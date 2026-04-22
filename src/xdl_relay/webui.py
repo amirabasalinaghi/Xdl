@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class InMemoryLogHandler(logging.Handler):
-    def __init__(self, capacity: int = 500) -> None:
+    def __init__(self, capacity: int = 2000) -> None:
         super().__init__()
         self.capacity = capacity
         self._records: deque[dict[str, str]] = deque(maxlen=capacity)
@@ -36,7 +36,7 @@ class InMemoryLogHandler(logging.Handler):
         except Exception:
             self.handleError(record)
 
-    def recent(self, limit: int = 200, level: str | None = None) -> list[dict[str, str]]:
+    def recent(self, limit: int = 1000, level: str | None = None) -> list[dict[str, str]]:
         normalized_level = (level or "").upper().strip()
         with self._lock:
             items = list(self._records)
@@ -51,7 +51,7 @@ _WEBUI_LOG_HANDLER: InMemoryLogHandler | None = None
 def _get_or_create_webui_log_handler() -> InMemoryLogHandler:
     global _WEBUI_LOG_HANDLER
     if _WEBUI_LOG_HANDLER is None:
-        handler = InMemoryLogHandler(capacity=1000)
+        handler = InMemoryLogHandler(capacity=5000)
         handler.setLevel(logging.INFO)
         handler.setFormatter(logging.Formatter("%(message)s"))
         logging.getLogger().addHandler(handler)
@@ -281,7 +281,7 @@ HTML_PAGE = """<!doctype html>
     async function loadEvents() {
       const status = document.getElementById('status').value;
       const query = encodeURIComponent(document.getElementById('query').value.trim());
-      const data = await getJson(`/api/events?limit=100&status=${encodeURIComponent(status)}&query=${query}`);
+      const data = await getJson(`/api/events?limit=500&status=${encodeURIComponent(status)}&query=${query}`);
       document.getElementById('events').innerHTML = data.map(e => `
         <tr>
           <td>${e.repost_tweet_id}</td>
@@ -294,7 +294,7 @@ HTML_PAGE = """<!doctype html>
     }
 
     async function loadLogs() {
-      const logs = await getJson('/api/logs?limit=50');
+      const logs = await getJson('/api/logs?limit=200');
       document.getElementById('logs').innerHTML = logs.map(l => `
         <tr><td>${l.repost_tweet_id}</td><td>${l.telegram_message_ids || '—'}</td><td>${l.created_at}</td></tr>
       `).join('');
@@ -327,7 +327,7 @@ HTML_PAGE = """<!doctype html>
 
     async function loadSystemLogs() {
       const level = encodeURIComponent(document.getElementById('log-level').value);
-      const logs = await getJson(`/api/system-logs?limit=200&level=${level}`);
+      const logs = await getJson(`/api/system-logs?limit=1000&level=${level}`);
       document.getElementById('system-logs').innerHTML = logs.map(l => `
         <tr>
           <td>${l.time}</td>
@@ -479,14 +479,14 @@ class DashboardServer:
                     return
 
                 if parsed.path == "/api/events":
-                    limit = _to_int(query.get("limit", ["100"])[0], 100)
+                    limit = _to_int(query.get("limit", ["500"])[0], 500)
                     status = query.get("status", [""])[0] or None
                     text_query = query.get("query", [""])[0] or None
                     self._json_response(relay_service.db.list_events(limit=limit, status=status, text_query=text_query))
                     return
 
                 if parsed.path == "/api/logs":
-                    limit = _to_int(query.get("limit", ["50"])[0], 50)
+                    limit = _to_int(query.get("limit", ["200"])[0], 200)
                     self._json_response(relay_service.db.list_delivery_logs(limit=limit))
                     return
 
@@ -495,7 +495,7 @@ class DashboardServer:
                     return
 
                 if parsed.path == "/api/system-logs":
-                    limit = _to_int(query.get("limit", ["200"])[0], 200)
+                    limit = _to_int(query.get("limit", ["1000"])[0], 1000)
                     level = query.get("level", [""])[0] or None
                     self._json_response(relay_service_log_handler.recent(limit=limit, level=level))
                     return
