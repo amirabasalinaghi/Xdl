@@ -12,6 +12,8 @@ from xdl_relay.webui import (
     _env_file_path,
     _normalize_download_mode,
     _settings_payload,
+    _to_float_or_default,
+    _to_int_or_default,
     _write_env_file,
 )
 
@@ -61,6 +63,16 @@ class TestWebUISettings(unittest.TestCase):
                     )
                 )
             self.assertTrue(os.path.exists(env_path))
+
+
+    def test_numeric_parsers_apply_defaults_and_bounds(self) -> None:
+        self.assertEqual(_to_int_or_default("10", 3), 10)
+        self.assertEqual(_to_int_or_default("0", 3), 1)
+        self.assertEqual(_to_int_or_default("bad", 3), 3)
+
+        self.assertEqual(_to_float_or_default("3.5", 1.0), 3.5)
+        self.assertEqual(_to_float_or_default("-1", 1.0), 0.0)
+        self.assertEqual(_to_float_or_default(None, 1.25), 1.25)
 
     def test_settings_payload_contains_dashboard_fields(self) -> None:
         settings = Settings(
