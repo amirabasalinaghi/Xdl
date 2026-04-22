@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 import time
+from collections import deque
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -13,6 +14,49 @@ from xdl_relay.config import Settings
 from xdl_relay.service import RelayService
 
 logger = logging.getLogger(__name__)
+
+
+class InMemoryLogHandler(logging.Handler):
+    def __init__(self, capacity: int = 500) -> None:
+        super().__init__()
+        self.capacity = capacity
+        self._records: deque[dict[str, str]] = deque(maxlen=capacity)
+        self._lock = threading.Lock()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            entry = {
+                "time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.created)),
+                "level": record.levelname,
+                "logger": record.name,
+                "message": self.format(record),
+            }
+            with self._lock:
+                self._records.append(entry)
+        except Exception:
+            self.handleError(record)
+
+    def recent(self, limit: int = 200, level: str | None = None) -> list[dict[str, str]]:
+        normalized_level = (level or "").upper().strip()
+        with self._lock:
+            items = list(self._records)
+        if normalized_level:
+            items = [item for item in items if item["level"] == normalized_level]
+        return list(reversed(items[-max(1, limit) :]))
+
+
+_WEBUI_LOG_HANDLER: InMemoryLogHandler | None = None
+
+
+def _get_or_create_webui_log_handler() -> InMemoryLogHandler:
+    global _WEBUI_LOG_HANDLER
+    if _WEBUI_LOG_HANDLER is None:
+        handler = InMemoryLogHandler(capacity=1000)
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logging.getLogger().addHandler(handler)
+        _WEBUI_LOG_HANDLER = handler
+    return _WEBUI_LOG_HANDLER
 
 
 HTML_PAGE = """<!doctype html>
@@ -53,6 +97,14 @@ HTML_PAGE = """<!doctype html>
     }
     .value { font-size: 1.8rem; font-weight: 700; margin-top: 8px; }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .fields {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 0.82rem; color: #cbd5e1; }
     input, select, button {
       border-radius: 10px;
       border: 1px solid #334155;
@@ -82,6 +134,11 @@ HTML_PAGE = """<!doctype html>
     .status-pending { background: rgba(234, 179, 8, 0.18); color: #fde68a; }
     .row { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
     @media (max-width: 980px) { .row { grid-template-columns: 1fr; } }
+    .saved-note { font-size: 0.76rem; color: #93c5fd; min-height: 1rem; }
+    .log-level-info { color: #93c5fd; }
+    .log-level-warning { color: #fde68a; }
+    .log-level-error, .log-level-critical { color: #fca5a5; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.84rem; }
   </style>
 </head>
 <body>
@@ -99,20 +156,42 @@ HTML_PAGE = """<!doctype html>
     <div class=\"grid\" id=\"stats\"></div>
 
     <section class=\"card\" style=\"margin-bottom:16px\">
-      <h3>Configuration</h3>
+      <h3>Relay Settings</h3>
+      <div class=\"fields\">
+        <div class=\"field\">
+          <label for=\"x_user_id\">X Account User ID</label>
+          <input id=\"x_user_id\" placeholder=\"e.g. 123456789\" />
+          <div class=\"saved-note\" id=\"saved_x_user_id\"></div>
+        </div>
+        <div class=\"field\">
+          <label for=\"x_bearer_token\">X API Bearer Token</label>
+          <input id=\"x_bearer_token\" placeholder=\"Paste your bearer token\" />
+          <div class=\"saved-note\" id=\"saved_x_bearer_token\"></div>
+        </div>
+        <div class=\"field\">
+          <label for=\"telegram_bot_token\">Telegram Bot Token</label>
+          <input id=\"telegram_bot_token\" placeholder=\"Paste bot token\" />
+          <div class=\"saved-note\" id=\"saved_telegram_bot_token\"></div>
+        </div>
+        <div class=\"field\">
+          <label for=\"telegram_chat_id\">Telegram Chat ID</label>
+          <input id=\"telegram_chat_id\" placeholder=\"e.g. -1001234567890\" />
+          <div class=\"saved-note\" id=\"saved_telegram_chat_id\"></div>
+        </div>
+        <div class=\"field\">
+          <label for=\"media_download_mode\">Media Download Mode</label>
+          <select id=\"media_download_mode\">
+            <option value=\"both\">Download photos and videos</option>
+            <option value=\"pic\">Download photos only</option>
+            <option value=\"video\">Download videos only</option>
+          </select>
+          <div class=\"saved-note\" id=\"saved_media_download_mode\"></div>
+        </div>
+      </div>
       <div class=\"toolbar\">
-        <input id=\"x_user_id\" placeholder=\"X_USER_ID\" />
-        <input id=\"x_bearer_token\" placeholder=\"X_BEARER_TOKEN\" />
-        <input id=\"telegram_bot_token\" placeholder=\"TELEGRAM_BOT_TOKEN\" />
-        <input id=\"telegram_chat_id\" placeholder=\"TELEGRAM_CHAT_ID\" />
-        <select id=\"media_download_mode\">
-          <option value=\"both\">Download: Pictures + Videos</option>
-          <option value=\"pic\">Download: Pictures only</option>
-          <option value=\"video\">Download: Videos only</option>
-        </select>
         <button id=\"save-settings\">Save settings</button>
       </div>
-      <div class=\"muted\">Set IDs/keys here, then use Process once or enable polling.</div>
+      <div class=\"muted\">Update connection details, then trigger a manual process or let polling run.</div>
     </section>
 
     <div class=\"row\">
@@ -139,7 +218,7 @@ HTML_PAGE = """<!doctype html>
       </section>
 
       <section class=\"card\">
-        <h3>Delivery logs</h3>
+        <h3>Telegram Deliveries</h3>
         <div style=\"overflow:auto\">
           <table>
             <thead><tr><th>Repost</th><th>Message IDs</th><th>At</th></tr></thead>
@@ -148,6 +227,26 @@ HTML_PAGE = """<!doctype html>
         </div>
       </section>
     </div>
+
+    <section class=\"card\" style=\"margin-top:16px;\">
+      <h3>Comprehensive Application Log</h3>
+      <div class=\"toolbar\">
+        <select id=\"log-level\">
+          <option value=\"\">All levels</option>
+          <option value=\"INFO\">Info</option>
+          <option value=\"WARNING\">Warning</option>
+          <option value=\"ERROR\">Error</option>
+          <option value=\"CRITICAL\">Critical</option>
+        </select>
+        <button id=\"refresh-logs\">Refresh logs</button>
+      </div>
+      <div style=\"overflow:auto; max-height: 360px;\">
+        <table>
+          <thead><tr><th>Time</th><th>Level</th><th>Logger</th><th>Message</th></tr></thead>
+          <tbody id=\"system-logs\" class=\"mono\"></tbody>
+        </table>
+      </div>
+    </section>
   </div>
 
   <script>
@@ -200,6 +299,15 @@ HTML_PAGE = """<!doctype html>
       `).join('');
     }
 
+    function maskSecret(value) {
+      if (!value) return 'Not saved';
+      if (value.length <= 8) return `Saved (${value.length} chars)`;
+      return `Saved (${value.slice(0, 4)}…${value.slice(-4)})`;
+    }
+
+    function setSavedHint(id, text) {
+      document.getElementById(`saved_${id}`).textContent = text;
+    }
 
     async function loadSettings() {
       const s = await getJson('/api/settings');
@@ -208,6 +316,25 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('telegram_bot_token').value = s.telegram_bot_token || '';
       document.getElementById('telegram_chat_id').value = s.telegram_chat_id || '';
       document.getElementById('media_download_mode').value = s.media_download_mode || 'both';
+
+      setSavedHint('x_user_id', s.x_user_id ? `Saved: ${s.x_user_id}` : 'Not saved');
+      setSavedHint('x_bearer_token', maskSecret(s.x_bearer_token));
+      setSavedHint('telegram_bot_token', maskSecret(s.telegram_bot_token));
+      setSavedHint('telegram_chat_id', s.telegram_chat_id ? `Saved: ${s.telegram_chat_id}` : 'Not saved');
+      setSavedHint('media_download_mode', `Saved: ${s.media_download_mode || 'both'}`);
+    }
+
+    async function loadSystemLogs() {
+      const level = encodeURIComponent(document.getElementById('log-level').value);
+      const logs = await getJson(`/api/system-logs?limit=200&level=${level}`);
+      document.getElementById('system-logs').innerHTML = logs.map(l => `
+        <tr>
+          <td>${l.time}</td>
+          <td class="log-level-${l.level.toLowerCase()}">${l.level}</td>
+          <td>${l.logger}</td>
+          <td title="${(l.message || '').replace(/\"/g, '&quot;')}">${l.message || ''}</td>
+        </tr>
+      `).join('');
     }
 
     async function saveSettings() {
@@ -227,10 +354,12 @@ HTML_PAGE = """<!doctype html>
     }
 
     async function refreshAll() {
-      await Promise.all([loadOverview(), loadEvents(), loadLogs()]);
+      await Promise.all([loadOverview(), loadEvents(), loadLogs(), loadSystemLogs()]);
     }
 
     document.getElementById('refresh').addEventListener('click', refreshAll);
+    document.getElementById('refresh-logs').addEventListener('click', () => loadSystemLogs().catch(err => alert(err.message)));
+    document.getElementById('log-level').addEventListener('change', () => loadSystemLogs().catch(err => console.error(err)));
     document.getElementById('save-settings').addEventListener('click', () => saveSettings().catch(err => alert(err.message)));
     document.getElementById('process').addEventListener('click', async () => {
       const btn = document.getElementById('process');
@@ -263,6 +392,7 @@ class DashboardServer:
         self.port = port
         self.enable_poller = enable_poller
         self._stop_event = threading.Event()
+        self._log_handler = _get_or_create_webui_log_handler()
 
     def _poll_loop(self) -> None:
         logger.info("Background poller started with interval=%ss", self.relay_service.settings.poll_interval_seconds)
@@ -297,6 +427,7 @@ class DashboardServer:
 
     def _handler_factory(self):
         relay_service = self.relay_service
+        relay_service_log_handler = self._log_handler
 
         class Handler(BaseHTTPRequestHandler):
             def _json_response(self, payload: dict | list, status: HTTPStatus = HTTPStatus.OK) -> None:
@@ -341,6 +472,12 @@ class DashboardServer:
 
                 if parsed.path == "/api/settings":
                     self._json_response(_settings_payload(relay_service.settings))
+                    return
+
+                if parsed.path == "/api/system-logs":
+                    limit = _to_int(query.get("limit", ["200"])[0], 200)
+                    level = query.get("level", [""])[0] or None
+                    self._json_response(relay_service_log_handler.recent(limit=limit, level=level))
                     return
 
                 self._json_response({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
