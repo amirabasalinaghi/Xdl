@@ -26,6 +26,7 @@ class XClient:
         self.backoff_seconds = backoff_seconds
         self.max_pages = max_pages
         self.bearer_token = bearer_token
+        self._reverse_chronological_supported: bool | None = None
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
         resolved_user_id = self._resolve_user_id(user_id)
@@ -38,11 +39,16 @@ class XClient:
         # Some accounts/tokens do not surface fresh repost actions consistently
         # through /users/{id}/tweets. Query reverse chronological timeline as an
         # additional source and merge results by repost tweet id.
+        if self._reverse_chronological_supported is False:
+            logger.debug("Reverse chronological fallback disabled from previous HTTP 403 response.")
+            return events
+
         try:
             fallback_events = self._collect_reposts_for_endpoint(
                 f"/users/{resolved_user_id}/timelines/reverse_chronological",
                 since_id=since_id,
             )
+            self._reverse_chronological_supported = True
             merged: dict[str, RepostEvent] = {event.repost_tweet_id: event for event in events}
             merged.update({event.repost_tweet_id: event for event in fallback_events})
             return sorted(merged.values(), key=lambda e: int(e.repost_tweet_id))
@@ -50,8 +56,10 @@ class XClient:
             # Application-only bearer tokens are rejected for this endpoint.
             # Keep polling functional by treating this fallback as optional.
             if exc.code == 403:
+                self._reverse_chronological_supported = False
                 logger.warning(
-                    "Skipping reverse chronological fallback for user_id=%s due to HTTP 403.",
+                    "Skipping reverse chronological fallback for user_id=%s due to HTTP 403. "
+                    "Disabling this fallback for subsequent polls.",
                     resolved_user_id,
                 )
                 return events
