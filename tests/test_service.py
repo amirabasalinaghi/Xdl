@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from xdl_relay.config import Settings
 from xdl_relay.models import MediaItem, RepostEvent
@@ -27,6 +28,11 @@ class _FailingTelegramClient:
     def send_message(self, chat_id: str, text: str) -> int:
         self.messages.append(text)
         return 1
+
+
+class _SuccessfulTelegramClient:
+    def send_media(self, chat_id: str, files: list[Path], caption: str | None = None) -> list[int]:
+        return [123]
 
 
 class TestServiceBehavior(unittest.TestCase):
@@ -117,6 +123,40 @@ class TestServiceBehavior(unittest.TestCase):
                 )
             )
             self.assertEqual([m.media_key for m in service._filter_media_by_mode(media)], ["m2"])
+
+    def test_force_refresh_retries_unsent_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            event = RepostEvent(
+                repost_tweet_id="200",
+                original_tweet_id="100",
+                original_author_id="abc",
+                repost_text="RT: something cool",
+                original_text="something cool",
+                media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
+            )
+            service.db.create_repost_event("200", "100")
+            service.db.mark_failed("200", "temporary failure")
+            service.x_client = _FakeXClient([event])
+            service.telegram_client = _SuccessfulTelegramClient()
+
+            with mock.patch("xdl_relay.service.download_file", return_value=Path(tmp) / "a.jpg"):
+                result = service.force_refresh_and_retry_unsent()
+
+            self.assertEqual(result["fetched"], 1)
+            self.assertEqual(result["retried"], 1)
+            self.assertEqual(result["retried_success"], 1)
+            self.assertEqual(result["new_processed"], 0)
+            status = service.db.list_events(limit=10, status=None, text_query="200")[0]["status"]
+            self.assertEqual(status, "sent")
 
 
 if __name__ == "__main__":

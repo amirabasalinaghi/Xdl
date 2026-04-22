@@ -67,6 +67,34 @@ class RelayService:
 
         return processed
 
+    def force_refresh_and_retry_unsent(self) -> dict[str, int]:
+        unsent_repost_ids = set(self.db.list_unsent_repost_ids())
+        reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
+        if not reposts:
+            return {"fetched": 0, "retried": 0, "retried_success": 0, "new_processed": 0}
+
+        retried = 0
+        retried_success = 0
+        new_processed = 0
+
+        for event in reposts:
+            if event.repost_tweet_id in unsent_repost_ids:
+                retried += 1
+                if self._deliver_event(event):
+                    retried_success += 1
+                continue
+
+            created, succeeded = self._process_event(event)
+            if created and succeeded:
+                new_processed += 1
+
+        return {
+            "fetched": len(reposts),
+            "retried": retried,
+            "retried_success": retried_success,
+            "new_processed": new_processed,
+        }
+
     def run_forever(self) -> None:
         logger.info("Starting relay with poll interval=%ss", self.settings.poll_interval_seconds)
         while True:
@@ -82,7 +110,9 @@ class RelayService:
         created = self.db.create_repost_event(event.repost_tweet_id, event.original_tweet_id)
         if not created:
             return False, False
+        return True, self._deliver_event(event)
 
+    def _deliver_event(self, event: RepostEvent) -> bool:
         try:
             selected_media = self._filter_media_by_mode(event.media)
             logger.info(
@@ -97,7 +127,7 @@ class RelayService:
                     event.repost_tweet_id,
                     f"No media matched download mode '{self.settings.media_download_mode}'",
                 )
-                return True, False
+                return False
 
             files: list[Path] = []
             for idx, media in enumerate(selected_media):
@@ -128,13 +158,13 @@ class RelayService:
                 caption=self._build_caption(event) if self.settings.telegram_include_caption else None,
             )
             self.db.mark_sent(event.repost_tweet_id, ",".join(str(mid) for mid in message_ids))
-            return True, True
+            return True
         except Exception as exc:
             self.db.mark_failed(event.repost_tweet_id, str(exc))
             if self.settings.telegram_failure_alerts:
                 self._notify_failure(event.repost_tweet_id, exc)
             logger.exception("Failed processing repost %s", event.repost_tweet_id)
-            return True, False
+            return False
 
     def _filter_media_by_mode(self, media_items: list[MediaItem]) -> list[MediaItem]:
         mode = (self.settings.media_download_mode or "both").lower()
