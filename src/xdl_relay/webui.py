@@ -15,6 +15,19 @@ from xdl_relay.service import RelayService
 
 logger = logging.getLogger(__name__)
 
+MIN_POLL_INTERVAL_SECONDS = 1
+MAX_POLL_INTERVAL_SECONDS = 3600
+MIN_HTTP_TIMEOUT_SECONDS = 1
+MAX_HTTP_TIMEOUT_SECONDS = 300
+MIN_HTTP_RETRIES = 1
+MAX_HTTP_RETRIES = 10
+MIN_HTTP_BACKOFF_SECONDS = 0.0
+MAX_HTTP_BACKOFF_SECONDS = 60.0
+MIN_MAX_MEDIA_BYTES = 1
+MAX_MAX_MEDIA_BYTES = 50 * 1024 * 1024
+MIN_X_MAX_PAGES = 1
+MAX_X_MAX_PAGES = 100
+
 
 class InMemoryLogHandler(logging.Handler):
     def __init__(self, capacity: int = 2000) -> None:
@@ -191,38 +204,38 @@ HTML_PAGE = """<!doctype html>
         </div>
         <div class=\"field\">
           <label for=\"poll_interval_seconds\">Polling Interval (seconds)</label>
-          <input id=\"poll_interval_seconds\" type=\"number\" min=\"1\" step=\"1\" />
-          <div class=\"help\">How often the relay checks X for new reposts. Lower values are faster but can increase API usage.</div>
+          <input id=\"poll_interval_seconds\" type=\"number\" min=\"1\" max=\"3600\" step=\"1\" />
+          <div class=\"help\">How often the relay checks X for new reposts. Allowed range: 1 to 3600 seconds.</div>
           <div class=\"saved-note\" id=\"saved_poll_interval_seconds\"></div>
         </div>
         <div class=\"field\">
           <label for=\"http_timeout_seconds\">HTTP Timeout (seconds)</label>
-          <input id=\"http_timeout_seconds\" type=\"number\" min=\"1\" step=\"1\" />
-          <div class=\"help\">Maximum time to wait for each API or media download request before timing out.</div>
+          <input id=\"http_timeout_seconds\" type=\"number\" min=\"1\" max=\"300\" step=\"1\" />
+          <div class=\"help\">Maximum time to wait for each API or media download request before timing out. Allowed range: 1 to 300 seconds.</div>
           <div class=\"saved-note\" id=\"saved_http_timeout_seconds\"></div>
         </div>
         <div class=\"field\">
           <label for=\"http_retries\">HTTP Retries</label>
-          <input id=\"http_retries\" type=\"number\" min=\"1\" step=\"1\" />
-          <div class=\"help\">Number of retry attempts after a failed HTTP request.</div>
+          <input id=\"http_retries\" type=\"number\" min=\"1\" max=\"10\" step=\"1\" />
+          <div class=\"help\">Number of retry attempts after a failed HTTP request. Allowed range: 1 to 10.</div>
           <div class=\"saved-note\" id=\"saved_http_retries\"></div>
         </div>
         <div class=\"field\">
           <label for=\"http_backoff_seconds\">Retry Backoff (seconds)</label>
-          <input id=\"http_backoff_seconds\" type=\"number\" min=\"0\" step=\"0.1\" />
-          <div class=\"help\">Delay multiplier between retries. Example: 2 means each retry waits longer than the previous one.</div>
+          <input id=\"http_backoff_seconds\" type=\"number\" min=\"0\" max=\"60\" step=\"0.1\" />
+          <div class=\"help\">Delay multiplier between retries. Allowed range: 0 to 60 seconds.</div>
           <div class=\"saved-note\" id=\"saved_http_backoff_seconds\"></div>
         </div>
         <div class=\"field\">
           <label for=\"max_media_bytes\">Max Media Size (bytes)</label>
-          <input id=\"max_media_bytes\" type=\"number\" min=\"1\" step=\"1\" />
-          <div class=\"help\">Largest media file size allowed for download. Increase only if your system has enough disk and bandwidth.</div>
+          <input id=\"max_media_bytes\" type=\"number\" min=\"1\" max=\"52428800\" step=\"1\" />
+          <div class=\"help\">Largest media file size allowed for download. Allowed range: 1 to 52,428,800 bytes (50 MB cloud Telegram Bot API max).</div>
           <div class=\"saved-note\" id=\"saved_max_media_bytes\"></div>
         </div>
         <div class=\"field\">
           <label for=\"x_max_pages\">X API Max Pages</label>
-          <input id=\"x_max_pages\" type=\"number\" min=\"1\" step=\"1\" />
-          <div class=\"help\">Maximum number of API pages fetched per sync cycle. Higher values catch more history but use more API calls.</div>
+          <input id=\"x_max_pages\" type=\"number\" min=\"1\" max=\"100\" step=\"1\" />
+          <div class=\"help\">Maximum number of API pages fetched per sync cycle. Allowed range: 1 to 100 pages.</div>
           <div class=\"saved-note\" id=\"saved_x_max_pages\"></div>
         </div>
       </div>
@@ -587,19 +600,43 @@ class DashboardServer:
                         telegram_bot_token=data.get("telegram_bot_token") or relay_service.settings.telegram_bot_token,
                         telegram_chat_id=data.get("telegram_chat_id") or relay_service.settings.telegram_chat_id,
                         poll_interval_seconds=_to_int_or_default(
-                            data.get("poll_interval_seconds"), relay_service.settings.poll_interval_seconds
+                            data.get("poll_interval_seconds"),
+                            relay_service.settings.poll_interval_seconds,
+                            min_value=MIN_POLL_INTERVAL_SECONDS,
+                            max_value=MAX_POLL_INTERVAL_SECONDS,
                         ),
                         db_path=relay_service.settings.db_path,
                         media_dir=relay_service.settings.media_dir,
                         http_timeout_seconds=_to_int_or_default(
-                            data.get("http_timeout_seconds"), relay_service.settings.http_timeout_seconds
+                            data.get("http_timeout_seconds"),
+                            relay_service.settings.http_timeout_seconds,
+                            min_value=MIN_HTTP_TIMEOUT_SECONDS,
+                            max_value=MAX_HTTP_TIMEOUT_SECONDS,
                         ),
-                        http_retries=_to_int_or_default(data.get("http_retries"), relay_service.settings.http_retries),
+                        http_retries=_to_int_or_default(
+                            data.get("http_retries"),
+                            relay_service.settings.http_retries,
+                            min_value=MIN_HTTP_RETRIES,
+                            max_value=MAX_HTTP_RETRIES,
+                        ),
                         http_backoff_seconds=_to_float_or_default(
-                            data.get("http_backoff_seconds"), relay_service.settings.http_backoff_seconds, min_value=0.0
+                            data.get("http_backoff_seconds"),
+                            relay_service.settings.http_backoff_seconds,
+                            min_value=MIN_HTTP_BACKOFF_SECONDS,
+                            max_value=MAX_HTTP_BACKOFF_SECONDS,
                         ),
-                        max_media_bytes=_to_int_or_default(data.get("max_media_bytes"), relay_service.settings.max_media_bytes),
-                        x_max_pages=_to_int_or_default(data.get("x_max_pages"), relay_service.settings.x_max_pages),
+                        max_media_bytes=_to_int_or_default(
+                            data.get("max_media_bytes"),
+                            relay_service.settings.max_media_bytes,
+                            min_value=MIN_MAX_MEDIA_BYTES,
+                            max_value=MAX_MAX_MEDIA_BYTES,
+                        ),
+                        x_max_pages=_to_int_or_default(
+                            data.get("x_max_pages"),
+                            relay_service.settings.x_max_pages,
+                            min_value=MIN_X_MAX_PAGES,
+                            max_value=MAX_X_MAX_PAGES,
+                        ),
                         media_download_mode=_normalize_download_mode(
                             data.get("media_download_mode"), relay_service.settings.media_download_mode
                         ),
@@ -665,15 +702,31 @@ def _to_int(value: str, default: int) -> int:
         return default
 
 
-def _to_int_or_default(value: object, default: int, min_value: int = 1) -> int:
+def _to_int_or_default(
+    value: object,
+    default: int,
+    min_value: int = 1,
+    max_value: int | None = None,
+) -> int:
     try:
-        return max(min_value, int(str(value)))
+        parsed = max(min_value, int(str(value)))
+        if max_value is not None:
+            return min(max_value, parsed)
+        return parsed
     except (TypeError, ValueError):
         return default
 
 
-def _to_float_or_default(value: object, default: float, min_value: float = 0.0) -> float:
+def _to_float_or_default(
+    value: object,
+    default: float,
+    min_value: float = 0.0,
+    max_value: float | None = None,
+) -> float:
     try:
-        return max(min_value, float(str(value)))
+        parsed = max(min_value, float(str(value)))
+        if max_value is not None:
+            return min(max_value, parsed)
+        return parsed
     except (TypeError, ValueError):
         return default
