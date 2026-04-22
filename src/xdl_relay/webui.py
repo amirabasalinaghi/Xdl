@@ -91,10 +91,12 @@ HTML_PAGE = """<!doctype html>
     .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
     .header {
       display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
-      margin-bottom: 16px;
+      margin-bottom: 16px; position: sticky; top: 0; z-index: 5;
+      padding: 10px 0; backdrop-filter: blur(10px);
     }
     h1 { margin: 0; font-size: 1.6rem; }
     .muted { color: #94a3b8; }
+    .subtitle { margin-top: 4px; font-size: 0.86rem; }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -107,8 +109,9 @@ HTML_PAGE = """<!doctype html>
       border-radius: 14px;
       padding: 14px;
       backdrop-filter: blur(4px);
+      box-shadow: 0 16px 30px rgba(2, 6, 23, 0.25);
     }
-    .value { font-size: 1.8rem; font-weight: 700; margin-top: 8px; }
+    .value { font-size: 1.8rem; font-weight: 700; margin-top: 8px; word-break: break-word; }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
     .fields {
       display: grid;
@@ -131,10 +134,19 @@ HTML_PAGE = """<!doctype html>
       border: none;
       cursor: pointer;
       font-weight: 600;
+      transition: transform .14s ease, filter .14s ease, opacity .2s ease;
     }
+    button:active { transform: translateY(1px) scale(.99); }
+    button:disabled { opacity: 0.7; cursor: not-allowed; }
     button:hover { filter: brightness(1.1); }
+    .btn-secondary {
+      background: #1e293b;
+      border: 1px solid #334155;
+    }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 10px; border-bottom: 1px solid #1e293b; font-size: 0.92rem; }
+    thead th { position: sticky; top: 0; background: #0b1222; z-index: 1; }
+    tbody tr:hover { background: rgba(51, 65, 85, 0.25); }
     .status {
       padding: 3px 8px;
       border-radius: 999px;
@@ -153,6 +165,14 @@ HTML_PAGE = """<!doctype html>
     .log-level-warning { color: #fde68a; }
     .log-level-error, .log-level-critical { color: #fca5a5; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.84rem; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid rgba(148, 163, 184, .25);
+      background: rgba(15, 23, 42, .8);
+      color: #cbd5e1; border-radius: 999px;
+      padding: 6px 10px; font-size: .78rem;
+    }
+    .quick-stats { display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 14px; }
   </style>
 </head>
 <body>
@@ -160,12 +180,18 @@ HTML_PAGE = """<!doctype html>
     <div class=\"header\">
       <div>
         <h1>XDL Relay Dashboard</h1>
-        <div class=\"muted\" id=\"live\">Live data from relay.db</div>
+        <div class=\"muted subtitle\" id=\"live\">Live data from relay.db</div>
       </div>
       <div class=\"toolbar\">
         <button id=\"process\">Process once now</button>
-        <button id=\"force-refresh\">Force refresh + retry unsent</button>
+        <button id=\"force-refresh\" class=\"btn-secondary\">Force refresh + retry unsent</button>
       </div>
+    </div>
+
+    <div class=\"quick-stats\" id=\"quick-health\">
+      <span class=\"pill\">Status: <strong id=\"pill-status\">Loading…</strong></span>
+      <span class=\"pill\">Failures: <strong id=\"pill-failures\">0</strong></span>
+      <span class=\"pill\">Last sync: <strong id=\"pill-last\">—</strong></span>
     </div>
 
     <div class=\"grid\" id=\"stats\"></div>
@@ -326,6 +352,9 @@ HTML_PAGE = """<!doctype html>
         card('Last updated', o.last_update || '—')
       ].join('');
       document.getElementById('live').textContent = `DB: ${o.db_path} • auto refresh every 10s`;
+      document.getElementById('pill-failures').textContent = `${o.failed_events || 0}`;
+      document.getElementById('pill-last').textContent = o.last_update || '—';
+      document.getElementById('pill-status').textContent = (o.failed_events || 0) > 0 ? 'Needs attention' : 'Healthy';
     }
 
     async function loadEvents() {
