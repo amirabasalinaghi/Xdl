@@ -26,6 +26,7 @@ class RelayService:
             retries=settings.http_retries,
             backoff_seconds=settings.http_backoff_seconds,
             max_pages=settings.x_max_pages,
+            page_size=settings.x_page_size,
             bearer_token=settings.x_bearer_token,
         )
         self.telegram_client = TelegramClient(settings.telegram_bot_token)
@@ -40,6 +41,7 @@ class RelayService:
                 retries=settings.http_retries,
                 backoff_seconds=settings.http_backoff_seconds,
                 max_pages=settings.x_max_pages,
+                page_size=settings.x_page_size,
                 bearer_token=settings.x_bearer_token,
             )
             self.telegram_client = TelegramClient(settings.telegram_bot_token)

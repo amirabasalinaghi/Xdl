@@ -17,7 +17,8 @@ class Settings:
     http_retries: int = 5
     http_backoff_seconds: float = 2.0
     max_media_bytes: int = 200 * 1024 * 1024
-    x_max_pages: int = 64
+    x_max_pages: int = 100
+    x_page_size: int = 100
     media_download_mode: str = "both"
     telegram_include_caption: bool = True
     telegram_failure_alerts: bool = True
@@ -46,7 +47,8 @@ class Settings:
             http_retries=int(os.getenv("HTTP_RETRIES", "5")),
             http_backoff_seconds=float(os.getenv("HTTP_BACKOFF_SECONDS", "2.0")),
             max_media_bytes=int(os.getenv("MAX_MEDIA_BYTES", str(200 * 1024 * 1024))),
-            x_max_pages=int(os.getenv("X_MAX_PAGES", "64")),
+            x_max_pages=int(os.getenv("X_MAX_PAGES", "100")),
+            x_page_size=int(os.getenv("X_PAGE_SIZE", "100")),
             media_download_mode=os.getenv("MEDIA_DOWNLOAD_MODE", "both").lower(),
             telegram_include_caption=os.getenv("TELEGRAM_INCLUDE_CAPTION", "1").lower()
             in {"1", "true", "yes", "on"},
@@ -68,6 +70,7 @@ class Settings:
             "HTTP_BACKOFF_SECONDS": str(self.http_backoff_seconds),
             "MAX_MEDIA_BYTES": str(self.max_media_bytes),
             "X_MAX_PAGES": str(self.x_max_pages),
+            "X_PAGE_SIZE": str(self.x_page_size),
             "MEDIA_DOWNLOAD_MODE": self.media_download_mode,
             "TELEGRAM_INCLUDE_CAPTION": "1" if self.telegram_include_caption else "0",
             "TELEGRAM_FAILURE_ALERTS": "1" if self.telegram_failure_alerts else "0",
