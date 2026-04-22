@@ -146,3 +146,17 @@ class RelayDB:
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_unsent_repost_ids(self, limit: int = 500) -> list[str]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT repost_tweet_id
+                FROM repost_events
+                WHERE status IN ('pending', 'failed')
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [str(row["repost_tweet_id"]) for row in rows if row["repost_tweet_id"]]
