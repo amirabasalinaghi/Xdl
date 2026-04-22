@@ -6,6 +6,7 @@ This service monitors a single X account for new reposts/retweets, downloads att
 - Poll X user timeline for new reposts.
 - Dedupe by repost tweet ID using SQLite.
 - Download every reposted media item to local disk.
+- Choose media download mode (`pic`, `video`, or `both`) via environment variable or Web UI settings.
 - Send single or grouped media to Telegram.
 - Add rich captions with original/repost links.
 - Optional Telegram alert message when a repost relay fails.
@@ -49,6 +50,7 @@ Optional tuning environment variables:
 - `MAX_MEDIA_BYTES` (default `52428800`)
 - `X_MAX_PAGES` (default `5`)
 - `X_OAUTH_TOKEN_PATH` (default `x_oauth_token.json`)
+- `MEDIA_DOWNLOAD_MODE` (default `both`; accepts `pic`, `video`, `both`)
 - `TELEGRAM_INCLUDE_CAPTION` (default `1`)
 - `TELEGRAM_FAILURE_ALERTS` (default `1`)
 

@@ -87,6 +87,37 @@ class TestServiceBehavior(unittest.TestCase):
             self.assertIn("https://x.com/i/web/status/100", caption)
             self.assertIn("https://x.com/i/web/status/200", caption)
 
+    def test_filter_media_by_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_client_id="cid",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+                media_download_mode="pic",
+            )
+            service = RelayService(settings)
+            media = [
+                MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg"),
+                MediaItem(media_key="m2", media_type="video", url="https://example.com/v.mp4"),
+            ]
+            self.assertEqual([m.media_key for m in service._filter_media_by_mode(media)], ["m1"])
+
+            service.update_settings(
+                Settings(
+                    x_user_id="user",
+                    x_client_id="cid",
+                    telegram_bot_token="tg",
+                    telegram_chat_id="chat",
+                    db_path=str(Path(tmp) / "relay.db"),
+                    media_dir=str(Path(tmp) / "media"),
+                    media_download_mode="video",
+                )
+            )
+            self.assertEqual([m.media_key for m in service._filter_media_by_mode(media)], ["m2"])
+
 
 if __name__ == "__main__":
     unittest.main()

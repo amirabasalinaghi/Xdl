@@ -57,7 +57,7 @@ class XClient:
                 "exclude": "replies",
                 "tweet.fields": "text,referenced_tweets,attachments",
                 "expansions": "referenced_tweets.id,referenced_tweets.id.author_id,referenced_tweets.id.attachments.media_keys",
-                "media.fields": "type,url,variants",
+                "media.fields": "type,url,variants,video_info",
             }
             if since_id:
                 params["since_id"] = since_id
