@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class RelayService:
     def __init__(self, settings: Settings) -> None:
+        self._process_lock = threading.Lock()
         self.settings = settings
         self.db = RelayDB(settings.db_path)
         self.x_client = XClient(
@@ -31,51 +33,53 @@ class RelayService:
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
     def update_settings(self, settings: Settings) -> None:
-        self.settings = settings
-        self.x_client = XClient(
-            timeout=settings.http_timeout_seconds,
-            retries=settings.http_retries,
-            backoff_seconds=settings.http_backoff_seconds,
-            max_pages=settings.x_max_pages,
-            bearer_token=settings.x_bearer_token,
-        )
-        self.telegram_client = TelegramClient(settings.telegram_bot_token)
-        self.media_dir = Path(settings.media_dir)
-        self.media_dir.mkdir(parents=True, exist_ok=True)
+        with self._process_lock:
+            self.settings = settings
+            self.x_client = XClient(
+                timeout=settings.http_timeout_seconds,
+                retries=settings.http_retries,
+                backoff_seconds=settings.http_backoff_seconds,
+                max_pages=settings.x_max_pages,
+                bearer_token=settings.x_bearer_token,
+            )
+            self.telegram_client = TelegramClient(settings.telegram_bot_token)
+            self.media_dir = Path(settings.media_dir)
+            self.media_dir.mkdir(parents=True, exist_ok=True)
 
     def process_once(self) -> int:
-        since_id = self.db.get_last_seen_tweet_id()
-        reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id)
-        if since_id:
-            reposts = self._filter_reposts_newer_than_cursor(reposts, since_id)
-        if not reposts and since_id:
-            logger.info(
-                "No reposts returned for since_id=%s; running catch-up scan without cursor to avoid missing recent reposts.",
-                since_id,
-            )
-            recent_reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
-            reposts = self._filter_reposts_newer_than_cursor(recent_reposts, since_id)
-        if not reposts:
-            return 0
+        with self._process_lock:
+            since_id = self.db.get_last_seen_tweet_id()
+            reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id)
+            if since_id:
+                reposts = self._filter_reposts_newer_than_cursor(reposts, since_id)
+            if not reposts and since_id:
+                logger.info(
+                    "No reposts returned for since_id=%s; running catch-up scan without cursor to avoid missing recent reposts.",
+                    since_id,
+                )
+                recent_reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
+                reposts = self._filter_reposts_newer_than_cursor(recent_reposts, since_id)
+            if not reposts:
+                return 0
 
-        processed = 0
-        for event in reposts:
-            logger.info(
-                "Processing repost=%s original=%s media_count=%s",
-                event.repost_tweet_id,
-                event.original_tweet_id,
-                len(event.media),
-            )
-            created, succeeded = self._process_event(event)
-            if succeeded:
-                processed += 1
-            if not succeeded:
-                logger.warning("Repost %s failed delivery; cursor will still advance", event.repost_tweet_id)
-            # Always advance cursor for fetched events so one failing repost
-            # does not block discovering newer reposts.
-            self.db.set_last_seen_tweet_id(event.repost_tweet_id)
+            processed = 0
+            for event in reposts:
+                logger.info(
+                    "Processing repost=%s original=%s media_count=%s",
+                    event.repost_tweet_id,
+                    event.original_tweet_id,
+                    len(event.media),
+                )
+                created, succeeded = self._process_event(event)
+                if succeeded:
+                    processed += 1
+                if not succeeded:
+                    logger.warning("Repost %s failed delivery; cursor will still advance", event.repost_tweet_id)
+                # Always advance cursor for fetched events so one failing repost
+                # does not block discovering newer reposts.
+                self.db.set_last_seen_tweet_id(event.repost_tweet_id)
 
-        return processed
+            return processed
 
     def _filter_reposts_newer_than_cursor(self, reposts: list[RepostEvent], since_id: str) -> list[RepostEvent]:
         def _as_int(value: str) -> int | None:
@@ -93,32 +97,33 @@ class RelayService:
         return sorted(filtered, key=lambda event: _as_int(event.repost_tweet_id) or 0)
 
     def force_refresh_and_retry_unsent(self) -> dict[str, int]:
-        unsent_repost_ids = set(self.db.list_unsent_repost_ids())
-        reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
-        if not reposts:
-            return {"fetched": 0, "retried": 0, "retried_success": 0, "new_processed": 0}
+        with self._process_lock:
+            unsent_repost_ids = set(self.db.list_unsent_repost_ids())
+            reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
+            if not reposts:
+                return {"fetched": 0, "retried": 0, "retried_success": 0, "new_processed": 0}
 
-        retried = 0
-        retried_success = 0
-        new_processed = 0
+            retried = 0
+            retried_success = 0
+            new_processed = 0
 
-        for event in reposts:
-            if event.repost_tweet_id in unsent_repost_ids:
-                retried += 1
-                if self._deliver_event(event):
-                    retried_success += 1
-                continue
+            for event in reposts:
+                if event.repost_tweet_id in unsent_repost_ids:
+                    retried += 1
+                    if self._deliver_event(event):
+                        retried_success += 1
+                    continue
 
-            created, succeeded = self._process_event(event)
-            if created and succeeded:
-                new_processed += 1
+                created, succeeded = self._process_event(event)
+                if created and succeeded:
+                    new_processed += 1
 
-        return {
-            "fetched": len(reposts),
-            "retried": retried,
-            "retried_success": retried_success,
-            "new_processed": new_processed,
-        }
+            return {
+                "fetched": len(reposts),
+                "retried": retried,
+                "retried_success": retried_success,
+                "new_processed": new_processed,
+            }
 
     def run_forever(self) -> None:
         logger.info("Starting relay with poll interval=%ss", self.settings.poll_interval_seconds)
