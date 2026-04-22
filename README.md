@@ -15,10 +15,9 @@ This service monitors a single X account for new reposts/retweets, downloads att
 ## Setup
 1. Find the numeric `X_USER_ID` for the X account you want to monitor.
 2. Create a Telegram bot with BotFather and capture bot token.
-3. Create an X OAuth 2.0 App (Authorization Code with PKCE) and copy the `Client ID`.
-4. Add a callback URL in your X app (for example `https://localhost/callback`).
-5. Start a chat with your bot (or add bot to channel/group).
-6. Copy `.env.example` values into your environment.
+3. Create an X app and generate a bearer token that can read tweets for your target account.
+4. Start a chat with your bot (or add bot to channel/group).
+5. Copy `.env.example` values into your environment.
 
 ### Required command
 ```bash
@@ -35,11 +34,9 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e .
 export X_USER_ID=...
-export X_CLIENT_ID=...
+export X_BEARER_TOKEN=...
 export TELEGRAM_BOT_TOKEN=...
 export TELEGRAM_CHAT_ID=...
-export X_OAUTH_REDIRECT_URI=https://localhost/callback
-python -m xdl_relay --x-login
 python -m xdl_relay
 ```
 
@@ -49,7 +46,6 @@ Optional tuning environment variables:
 - `HTTP_BACKOFF_SECONDS` (default `1.0`)
 - `MAX_MEDIA_BYTES` (default `52428800`)
 - `X_MAX_PAGES` (default `5`)
-- `X_OAUTH_TOKEN_PATH` (default `x_oauth_token.json`)
 - `MEDIA_DOWNLOAD_MODE` (default `both`; accepts `pic`, `video`, `both`)
 - `TELEGRAM_INCLUDE_CAPTION` (default `1`)
 - `TELEGRAM_FAILURE_ALERTS` (default `1`)

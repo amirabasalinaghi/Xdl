@@ -87,7 +87,6 @@ SERVICE_GROUP="$(ask_default "SERVICE_GROUP" "Linux group to run the service" "$
 POLL_INTERVAL_SECONDS="$(ask_default "POLL_INTERVAL_SECONDS" "POLL_INTERVAL_SECONDS" "30")"
 DB_PATH="$(ask_default "DB_PATH" "DB_PATH (inside ${INSTALL_DIR})" "${INSTALL_DIR}/relay.db")"
 MEDIA_DIR="$(ask_default "MEDIA_DIR" "MEDIA_DIR (inside ${INSTALL_DIR})" "${INSTALL_DIR}/media")"
-X_OAUTH_TOKEN_PATH="$(ask_default "X_OAUTH_TOKEN_PATH" "X_OAUTH_TOKEN_PATH (inside ${ENV_DIR})" "${ENV_DIR}/x-oauth-token.json")"
 WEBUI_HOST="$(ask_default "WEBUI_HOST" "WEBUI_HOST" "0.0.0.0")"
 WEBUI_PORT="$(ask_default "WEBUI_PORT" "WEBUI_PORT" "8080")"
 
@@ -135,11 +134,9 @@ echo "Writing environment file to ${ENV_FILE}..."
 ${SUDO} tee "${ENV_FILE}" >/dev/null <<EOV
 # Configure these in the Web UI after installation.
 X_USER_ID=SET_IN_WEBUI
-X_CLIENT_ID=SET_IN_WEBUI
+X_BEARER_TOKEN=SET_IN_WEBUI
 TELEGRAM_BOT_TOKEN=SET_IN_WEBUI
 TELEGRAM_CHAT_ID=SET_IN_WEBUI
-X_OAUTH_REDIRECT_URI=https://localhost/callback
-X_OAUTH_TOKEN_PATH=${X_OAUTH_TOKEN_PATH}
 POLL_INTERVAL_SECONDS=${POLL_INTERVAL_SECONDS}
 DB_PATH=${DB_PATH}
 MEDIA_DIR=${MEDIA_DIR}
