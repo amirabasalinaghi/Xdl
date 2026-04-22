@@ -16,8 +16,8 @@ class Settings:
     http_timeout_seconds: int = 30
     http_retries: int = 3
     http_backoff_seconds: float = 1.0
-    max_media_bytes: int = 50 * 1024 * 1024
-    x_max_pages: int = 5
+    max_media_bytes: int = 0
+    x_max_pages: int = 32
     media_download_mode: str = "both"
     telegram_include_caption: bool = True
     telegram_failure_alerts: bool = True
@@ -45,8 +45,8 @@ class Settings:
             http_timeout_seconds=int(os.getenv("HTTP_TIMEOUT_SECONDS", "30")),
             http_retries=int(os.getenv("HTTP_RETRIES", "3")),
             http_backoff_seconds=float(os.getenv("HTTP_BACKOFF_SECONDS", "1.0")),
-            max_media_bytes=int(os.getenv("MAX_MEDIA_BYTES", str(50 * 1024 * 1024))),
-            x_max_pages=int(os.getenv("X_MAX_PAGES", "5")),
+            max_media_bytes=int(os.getenv("MAX_MEDIA_BYTES", "0")),
+            x_max_pages=int(os.getenv("X_MAX_PAGES", "32")),
             media_download_mode=os.getenv("MEDIA_DOWNLOAD_MODE", "both").lower(),
             telegram_include_caption=os.getenv("TELEGRAM_INCLUDE_CAPTION", "1").lower()
             in {"1", "true", "yes", "on"},

@@ -147,7 +147,7 @@ class RelayService:
                         media.url,
                         path,
                         timeout=self.settings.http_timeout_seconds,
-                        max_bytes=self.settings.max_media_bytes,
+                        max_bytes=self.settings.max_media_bytes if self.settings.max_media_bytes > 0 else None,
                     )
                 )
             logger.info("Sending %s files to Telegram for repost=%s", len(files), event.repost_tweet_id)
