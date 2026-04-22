@@ -25,28 +25,6 @@ SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 DEFAULT_USER="${SUDO_USER:-${USER}}"
 DEFAULT_GROUP="$(id -gn "${DEFAULT_USER}")"
 
-ask_required() {
-  local key="$1"
-  local prompt="${2:-$1}"
-  local value=""
-  local env_value="${!key:-}"
-  if [[ -n "${env_value}" ]]; then
-    printf '%s' "${env_value}"
-    return
-  fi
-  while [[ -z "${value}" ]]; do
-    if [[ -r /dev/tty ]]; then
-      read -r -p "${prompt}: " value < /dev/tty
-    else
-      read -r -p "${prompt}: " value
-    fi
-    if [[ -z "${value}" ]]; then
-      echo "This value is required."
-    fi
-  done
-  printf '%s' "${value}"
-}
-
 ask_default() {
   local key="$1"
   local prompt="$2"
@@ -99,21 +77,19 @@ remove_previous_install() {
 }
 
 echo "== XDL Relay Linux Service Installer =="
-echo "This will install ${SERVICE_NAME} as a systemd service."
+echo "This installs only the relay runtime + Web UI."
+echo "API keys, IDs, bot token, and relay behavior are configured in the Web UI after install."
 echo
 
 REPO_DIR="$(ask_default "REPO_DIR" "Path to this repository" "$(pwd)")"
-X_USER_ID="$(ask_required "X_USER_ID" "X_USER_ID")"
-X_CLIENT_ID="$(ask_required "X_CLIENT_ID" "X_CLIENT_ID (X OAuth2 client ID)")"
-TELEGRAM_BOT_TOKEN="$(ask_required "TELEGRAM_BOT_TOKEN" "TELEGRAM_BOT_TOKEN")"
-TELEGRAM_CHAT_ID="$(ask_required "TELEGRAM_CHAT_ID" "TELEGRAM_CHAT_ID")"
-X_OAUTH_REDIRECT_URI="$(ask_default "X_OAUTH_REDIRECT_URI" "X_OAUTH_REDIRECT_URI" "https://localhost/callback")"
-POLL_INTERVAL_SECONDS="$(ask_default "POLL_INTERVAL_SECONDS" "POLL_INTERVAL_SECONDS" "30")"
 SERVICE_USER="$(ask_default "SERVICE_USER" "Linux user to run the service" "${DEFAULT_USER}")"
 SERVICE_GROUP="$(ask_default "SERVICE_GROUP" "Linux group to run the service" "${DEFAULT_GROUP}")"
+POLL_INTERVAL_SECONDS="$(ask_default "POLL_INTERVAL_SECONDS" "POLL_INTERVAL_SECONDS" "30")"
 DB_PATH="$(ask_default "DB_PATH" "DB_PATH (inside ${INSTALL_DIR})" "${INSTALL_DIR}/relay.db")"
 MEDIA_DIR="$(ask_default "MEDIA_DIR" "MEDIA_DIR (inside ${INSTALL_DIR})" "${INSTALL_DIR}/media")"
 X_OAUTH_TOKEN_PATH="$(ask_default "X_OAUTH_TOKEN_PATH" "X_OAUTH_TOKEN_PATH (inside ${ENV_DIR})" "${ENV_DIR}/x-oauth-token.json")"
+WEBUI_HOST="$(ask_default "WEBUI_HOST" "WEBUI_HOST" "0.0.0.0")"
+WEBUI_PORT="$(ask_default "WEBUI_PORT" "WEBUI_PORT" "8080")"
 
 if [[ ! -f "${REPO_DIR}/pyproject.toml" ]]; then
   echo "Could not find pyproject.toml in ${REPO_DIR}."
@@ -154,30 +130,23 @@ run_as_service_user "${SERVICE_USER}" python3 -m venv "${VENV_PATH}"
 echo "Installing application into virtual environment..."
 run_as_service_user "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install --upgrade pip
 run_as_service_user "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install "${REPO_DIR}"
-echo "Running interactive X login to generate user token..."
-run_as_service_user "${SERVICE_USER}" \
-  "${VENV_PATH}/bin/python" -m xdl_relay \
-  --x-login \
-  --client-id "${X_CLIENT_ID}" \
-  --redirect-uri "${X_OAUTH_REDIRECT_URI}" \
-  --token-path "${X_OAUTH_TOKEN_PATH}"
-${SUDO} chown "${SERVICE_USER}:${SERVICE_GROUP}" "${X_OAUTH_TOKEN_PATH}"
-${SUDO} chmod 600 "${X_OAUTH_TOKEN_PATH}"
 
 echo "Writing environment file to ${ENV_FILE}..."
 ${SUDO} tee "${ENV_FILE}" >/dev/null <<EOV
-X_USER_ID=${X_USER_ID}
-X_CLIENT_ID=${X_CLIENT_ID}
-TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-X_OAUTH_REDIRECT_URI=${X_OAUTH_REDIRECT_URI}
+# Configure these in the Web UI after installation.
+X_USER_ID=SET_IN_WEBUI
+X_CLIENT_ID=SET_IN_WEBUI
+TELEGRAM_BOT_TOKEN=SET_IN_WEBUI
+TELEGRAM_CHAT_ID=SET_IN_WEBUI
+X_OAUTH_REDIRECT_URI=https://localhost/callback
 X_OAUTH_TOKEN_PATH=${X_OAUTH_TOKEN_PATH}
 POLL_INTERVAL_SECONDS=${POLL_INTERVAL_SECONDS}
 DB_PATH=${DB_PATH}
 MEDIA_DIR=${MEDIA_DIR}
+RELAY_ENV_FILE=${ENV_FILE}
 EOV
 ${SUDO} chmod 600 "${ENV_FILE}"
-${SUDO} chown "root:root" "${ENV_FILE}"
+${SUDO} chown "${SERVICE_USER}:${SERVICE_GROUP}" "${ENV_FILE}"
 
 echo "Writing systemd service to ${SERVICE_FILE}..."
 ${SUDO} tee "${SERVICE_FILE}" >/dev/null <<EOS
@@ -192,7 +161,7 @@ User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=${ENV_FILE}
-ExecStart=${VENV_PATH}/bin/python -m xdl_relay
+ExecStart=${VENV_PATH}/bin/python -m xdl_relay --webui --host ${WEBUI_HOST} --port ${WEBUI_PORT} --no-poller
 Restart=always
 RestartSec=5
 
@@ -205,5 +174,8 @@ ${SUDO} systemctl enable --now "${SERVICE_NAME}"
 
 echo
 echo "Installation complete."
+echo "Web UI URL: http://$(hostname -I | awk '{print $1}'):${WEBUI_PORT}"
+echo "Local URL: http://${WEBUI_HOST}:${WEBUI_PORT}"
+echo "Configure IDs, API keys, and bot settings in the Web UI."
 echo "Check service status: sudo systemctl status ${SERVICE_NAME}"
 echo "View logs: sudo journalctl -u ${SERVICE_NAME} -f"

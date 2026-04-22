@@ -81,17 +81,18 @@ Run the interactive installer script:
 bash scripts/install_linux_service.sh
 ```
 
-The installer will prompt you for all required values (`X_USER_ID`, `X_CLIENT_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) and optional settings, then it will:
+The installer now focuses on runtime deployment only, then launches the Web UI for configuration. It will:
+- Fully remove any previous install (after confirmation)
 - Create a virtualenv under `/opt/xdl-relay/.venv`
 - Install the package
-- Open an interactive X OAuth login flow and save a refreshable user token
-- Write `/etc/xdl-relay/xdl-relay.env`
-- Create and start a `systemd` service named `xdl-relay`
+- Write `/etc/xdl-relay/xdl-relay.env` with placeholder values
+- Create and start a `systemd` service named `xdl-relay` in Web UI mode
+- Print the Web UI URL so you can configure IDs, API keys, bot settings, and other options there
 
 Notes:
 - The guided installer reads prompts from `/dev/tty`, so interactive prompts work even when launched via `curl ... | bash`.
 - If the installer detects an existing install, it now offers a full remove + reinstall workflow.
-- You can also pre-set values with environment variables (for unattended installs), e.g. `X_USER_ID`, `X_CLIENT_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SERVICE_USER`, `SERVICE_GROUP`, `DB_PATH`, and `MEDIA_DIR`.
+- You can also pre-set installer environment variables such as `SERVICE_USER`, `SERVICE_GROUP`, `DB_PATH`, `MEDIA_DIR`, `WEBUI_HOST`, and `WEBUI_PORT`.
 
 After install:
 
