@@ -41,11 +41,12 @@ python -m xdl_relay
 ```
 
 Optional tuning environment variables:
-- `HTTP_TIMEOUT_SECONDS` (default `30`)
-- `HTTP_RETRIES` (default `3`)
-- `HTTP_BACKOFF_SECONDS` (default `1.0`)
-- `MAX_MEDIA_BYTES` (default `0` = no local download size cap; Telegram/X API limits still apply)
-- `X_MAX_PAGES` (default `32`, matching X timeline depth of up to ~3200 posts at `100` per page)
+- `POLL_INTERVAL_SECONDS` (default `15`)
+- `HTTP_TIMEOUT_SECONDS` (default `60`)
+- `HTTP_RETRIES` (default `5`)
+- `HTTP_BACKOFF_SECONDS` (default `2.0`)
+- `MAX_MEDIA_BYTES` (default `209715200` = 200 MiB local download cap; Telegram/X API limits still apply)
+- `X_MAX_PAGES` (default `64`, up to ~6400 timeline items requested at `100` per page)
 - `MEDIA_DOWNLOAD_MODE` (default `both`; accepts `pic`, `video`, `both`)
 - `TELEGRAM_INCLUDE_CAPTION` (default `1`)
 - `TELEGRAM_FAILURE_ALERTS` (default `1`)

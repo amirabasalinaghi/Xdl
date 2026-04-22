@@ -177,8 +177,8 @@ class RelayService:
     def _build_caption(self, event: RepostEvent) -> str:
         title = event.original_text or event.repost_text or "Repost media forwarded"
         safe_title = " ".join(title.split())
-        if len(safe_title) > 280:
-            safe_title = f"{safe_title[:277]}..."
+        if len(safe_title) > 900:
+            safe_title = f"{safe_title[:897]}..."
         return (
             f"{safe_title}\n\n"
             f"Original: https://x.com/i/web/status/{event.original_tweet_id}\n"
@@ -189,7 +189,7 @@ class RelayService:
         try:
             self.telegram_client.send_message(
                 self.settings.telegram_chat_id,
-                f"⚠️ Relay failed for repost {repost_tweet_id}: {str(error)[:350]}",
+                f"⚠️ Relay failed for repost {repost_tweet_id}: {str(error)[:1000]}",
             )
         except Exception:
             logger.exception("Failed to send Telegram failure alert for repost %s", repost_tweet_id)
