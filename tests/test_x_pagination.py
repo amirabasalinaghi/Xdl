@@ -45,8 +45,10 @@ class TestXPagination(unittest.TestCase):
         requested_url = mock_get.call_args.args[0]
         query = parse_qs(urlparse(requested_url).query)
         expansions = query.get("expansions", [""])[0]
+        media_fields = query.get("media.fields", [""])[0]
         self.assertIn("attachments.media_keys", expansions)
-        self.assertNotIn("referenced_tweets.id.attachments.media_keys", expansions)
+        self.assertIn("referenced_tweets.id.attachments.media_keys", expansions)
+        self.assertNotIn("video_info", media_fields)
 
 
 if __name__ == "__main__":

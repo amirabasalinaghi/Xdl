@@ -35,12 +35,13 @@ class XClient:
                 "max_results": "100",
                 "exclude": "replies",
                 "tweet.fields": "text,author_id,referenced_tweets,attachments",
-                # NOTE: `referenced_tweets.id.attachments.media_keys` is not a
-                # valid expansion and causes API 400 responses.
-                # `attachments.media_keys` fetches media for tweets returned in
-                # both `data` and `includes.tweets` (referenced tweets).
-                "expansions": "attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id",
-                "media.fields": "type,url,variants,video_info",
+                "expansions": (
+                    "attachments.media_keys,"
+                    "referenced_tweets.id,"
+                    "referenced_tweets.id.author_id,"
+                    "referenced_tweets.id.attachments.media_keys"
+                ),
+                "media.fields": "type,url,variants",
             }
             if since_id:
                 params["since_id"] = since_id
