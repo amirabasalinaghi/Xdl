@@ -173,10 +173,50 @@ HTML_PAGE = """<!doctype html>
       padding: 6px 10px; font-size: .78rem;
     }
     .quick-stats { display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 14px; }
+
+    a.skip-link {
+      position: absolute; left: -9999px; top: 8px; z-index: 100;
+      background: #0ea5e9; color: #00111f; padding: 8px 12px; border-radius: 8px; font-weight: 700;
+    }
+    a.skip-link:focus { left: 8px; }
+    .container { max-width: 1280px; }
+    .card h3 { margin-top: 0; }
+    .card:hover { border-color: rgba(56, 189, 248, 0.4); }
+    input::placeholder { color: #64748b; }
+    input:focus-visible, select:focus-visible, button:focus-visible {
+      outline: 2px solid #38bdf8; outline-offset: 2px;
+    }
+    tbody tr:nth-child(even) { background: rgba(15, 23, 42, 0.2); }
+    .status { white-space: nowrap; }
+    .status-running { background: rgba(14, 165, 233, 0.2); color: #7dd3fc; }
+    .status-healthy { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+    .status-needs-attention { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
+    .meta-row { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+    .tiny { font-size: .76rem; }
+    .kbd { border: 1px solid #334155; border-bottom-width: 2px; padding: 1px 6px; border-radius: 6px; font-family: ui-monospace, monospace; }
+    .toast-wrap { position: fixed; right: 16px; bottom: 16px; z-index: 30; display:flex; flex-direction:column; gap:8px; max-width:380px; }
+    .toast { background: #0b1222; border: 1px solid #334155; border-left: 4px solid #0ea5e9; border-radius: 10px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+    .toast.error { border-left-color: #ef4444; }
+    .toast.success { border-left-color: #22c55e; }
+    .loading {
+      position: fixed; inset: 0; background: rgba(2, 6, 23, 0.4); backdrop-filter: blur(2px);
+      display: none; align-items: center; justify-content: center; z-index: 40;
+    }
+    .loading.show { display: flex; }
+    .spinner {
+      width: 44px; height: 44px; border-radius: 50%; border: 4px solid rgba(148, 163, 184, 0.2); border-top-color: #38bdf8;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .copy-btn { margin-left: 6px; font-size:.72rem; padding: 2px 6px; border-radius: 6px; background:#1e293b; border:1px solid #334155; }
+    .empty-state { text-align:center; color:#94a3b8; padding:14px; }
   </style>
 </head>
 <body>
-  <div class=\"container\">
+  <a href=\"#main\" class=\"skip-link\">Skip to main content</a>
+  <div id=\"loading\" class=\"loading\" aria-hidden=\"true\"><div class=\"spinner\" aria-label=\"Loading\"></div></div>
+  <div class=\"toast-wrap\" id=\"toasts\" aria-live=\"polite\"></div>
+  <div class=\"container\" id=\"main\">
     <div class=\"header\">
       <div>
         <h1>XDL Relay Dashboard</h1>
@@ -194,6 +234,12 @@ HTML_PAGE = """<!doctype html>
       <span class=\"pill\">Last sync: <strong id=\"pill-last\">—</strong></span>
     </div>
 
+    <div class=\"meta-row\">
+      <div class=\"muted tiny\">Last refreshed: <span id=\"last-refreshed\">Never</span> • Next auto refresh in <span id=\"refresh-countdown\">10</span>s</div>
+      <div class=\"toolbar\" style=\"margin:0\">
+        <button id=\"toggle-auto\" class=\"btn-secondary\">Pause auto refresh</button>
+      </div>
+    </div>
     <div class=\"grid\" id=\"stats\"></div>
 
     <section class=\"card\" style=\"margin-bottom:16px\">
@@ -206,12 +252,14 @@ HTML_PAGE = """<!doctype html>
         </div>
         <div class=\"field\">
           <label for=\"x_bearer_token\">X API Bearer Token</label>
-          <input id=\"x_bearer_token\" placeholder=\"Paste your bearer token\" />
+          <input id=\"x_bearer_token\" placeholder=\"Paste your bearer token\" autocomplete=\"off\" />
+          <div class=\"help\">Token length: <span id=\"x_bearer_token_count\">0</span> characters</div>
           <div class=\"saved-note\" id=\"saved_x_bearer_token\"></div>
         </div>
         <div class=\"field\">
           <label for=\"telegram_bot_token\">Telegram Bot Token</label>
-          <input id=\"telegram_bot_token\" placeholder=\"Paste bot token\" />
+          <input id=\"telegram_bot_token\" placeholder=\"Paste bot token\" autocomplete=\"off\" />
+          <div class=\"help\">Token length: <span id=\"telegram_bot_token_count\">0</span> characters</div>
           <div class=\"saved-note\" id=\"saved_telegram_bot_token\"></div>
         </div>
         <div class=\"field\">
@@ -281,7 +329,7 @@ HTML_PAGE = """<!doctype html>
             <option value=\"failed\">Failed</option>
             <option value=\"pending\">Pending</option>
           </select>
-          <input id=\"query\" placeholder=\"Search tweet id\" />
+          <input id=\"query\" placeholder=\"Search tweet id (Press / to focus)\" />
           <button id=\"refresh\">Refresh</button>
         </div>
         <div style=\"overflow:auto\">
@@ -307,6 +355,7 @@ HTML_PAGE = """<!doctype html>
 
     <section class=\"card\" style=\"margin-top:16px;\">
       <h3>Comprehensive Application Log</h3>
+      <div class="help">Shortcuts: <span class="kbd">r</span> refresh all, <span class="kbd">/</span> focus search.</div>
       <div class=\"toolbar\">
         <select id=\"log-level\">
           <option value=\"\">All levels</option>
@@ -327,10 +376,44 @@ HTML_PAGE = """<!doctype html>
   </div>
 
   <script>
+    let inFlightRequests = 0;
+    let autoRefreshEnabled = true;
+    let countdown = 10;
+    let searchDebounceTimer = null;
+
+    function setLoading(isLoading) {
+      const el = document.getElementById('loading');
+      el.classList.toggle('show', !!isLoading);
+      el.setAttribute('aria-hidden', isLoading ? 'false' : 'true');
+    }
+
+    function toast(message, type = 'info') {
+      const host = document.getElementById('toasts');
+      const item = document.createElement('div');
+      item.className = `toast ${type}`;
+      item.textContent = message;
+      host.appendChild(item);
+      setTimeout(() => item.remove(), 3500);
+    }
+
+    function formatDateTime(value) {
+      if (!value) return '—';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return value;
+      return d.toLocaleString();
+    }
+
     async function getJson(url, options = {}) {
-      const res = await fetch(url, options);
-      if (!res.ok) throw new Error('Request failed: ' + res.status);
-      return await res.json();
+      inFlightRequests += 1;
+      setLoading(inFlightRequests > 0);
+      try {
+        const res = await fetch(url, options);
+        if (!res.ok) throw new Error('Request failed: ' + res.status);
+        return await res.json();
+      } finally {
+        inFlightRequests = Math.max(0, inFlightRequests - 1);
+        setLoading(inFlightRequests > 0);
+      }
     }
 
     function card(label, value) {
@@ -338,7 +421,13 @@ HTML_PAGE = """<!doctype html>
     }
 
     function statusBadge(status) {
-      return `<span class=\"status status-${status}\">${status}</span>`;
+      const safe = (status || 'pending').toLowerCase();
+      return `<span class="status status-${safe}">${safe}</span>`;
+    }
+
+    function copyButton(value) {
+      const v = String(value || '');
+      return `<button class="copy-btn" data-copy="${v.replace(/"/g, '&quot;')}">Copy</button>`;
     }
 
     async function loadOverview() {
@@ -354,28 +443,39 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('live').textContent = `DB: ${o.db_path} • auto refresh every 10s`;
       document.getElementById('pill-failures').textContent = `${o.failed_events || 0}`;
       document.getElementById('pill-last').textContent = o.last_update || '—';
-      document.getElementById('pill-status').textContent = (o.failed_events || 0) > 0 ? 'Needs attention' : 'Healthy';
+      const health = (o.failed_events || 0) > 0 ? 'needs-attention' : 'healthy';
+      const healthLabel = health === 'healthy' ? 'Healthy' : 'Needs attention';
+      document.getElementById('pill-status').textContent = healthLabel;
+      document.getElementById('pill-status').className = `status status-${health}`;
     }
 
     async function loadEvents() {
       const status = document.getElementById('status').value;
       const query = encodeURIComponent(document.getElementById('query').value.trim());
       const data = await getJson(`/api/events?limit=500&status=${encodeURIComponent(status)}&query=${query}`);
+      if (!data.length) {
+        document.getElementById('events').innerHTML = '<tr><td colspan="5" class="empty-state">No repost events match the current filters.</td></tr>';
+        return;
+      }
       document.getElementById('events').innerHTML = data.map(e => `
         <tr>
-          <td>${e.repost_tweet_id}</td>
-          <td>${e.original_tweet_id}</td>
+          <td>${e.repost_tweet_id}${copyButton(e.repost_tweet_id)}</td>
+          <td>${e.original_tweet_id}${copyButton(e.original_tweet_id)}</td>
           <td>${statusBadge(e.status)}</td>
-          <td>${e.updated_at || e.created_at}</td>
-          <td title=\"${(e.error_message || '').replace(/\"/g, '&quot;')}\">${(e.error_message || '').slice(0, 80)}</td>
+          <td>${formatDateTime(e.updated_at || e.created_at)}</td>
+          <td title="${(e.error_message || '').replace(/"/g, '&quot;')}">${(e.error_message || '—').slice(0, 80)}</td>
         </tr>
       `).join('');
     }
 
     async function loadLogs() {
       const logs = await getJson('/api/logs?limit=200');
+      if (!logs.length) {
+        document.getElementById('logs').innerHTML = '<tr><td colspan="3" class="empty-state">No delivery logs yet.</td></tr>';
+        return;
+      }
       document.getElementById('logs').innerHTML = logs.map(l => `
-        <tr><td>${l.repost_tweet_id}</td><td>${l.telegram_message_ids || '—'}</td><td>${l.created_at}</td></tr>
+        <tr><td>${l.repost_tweet_id}</td><td>${l.telegram_message_ids || '—'}</td><td>${formatDateTime(l.created_at)}</td></tr>
       `).join('');
     }
 
@@ -394,6 +494,7 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('x_user_id').value = s.x_user_id || '';
       document.getElementById('x_bearer_token').value = s.x_bearer_token || '';
       document.getElementById('telegram_bot_token').value = s.telegram_bot_token || '';
+      updateTokenCounts();
       document.getElementById('telegram_chat_id').value = s.telegram_chat_id || '';
       document.getElementById('media_download_mode').value = s.media_download_mode || 'both';
       document.getElementById('poll_interval_seconds').value = s.poll_interval_seconds || 15;
@@ -419,12 +520,16 @@ HTML_PAGE = """<!doctype html>
     async function loadSystemLogs() {
       const level = encodeURIComponent(document.getElementById('log-level').value);
       const logs = await getJson(`/api/system-logs?limit=1000&level=${level}`);
+      if (!logs.length) {
+        document.getElementById('system-logs').innerHTML = '<tr><td colspan="4" class="empty-state">No logs found for this level.</td></tr>';
+        return;
+      }
       document.getElementById('system-logs').innerHTML = logs.map(l => `
         <tr>
           <td>${l.time}</td>
           <td class="log-level-${l.level.toLowerCase()}">${l.level}</td>
           <td>${l.logger}</td>
-          <td title="${(l.message || '').replace(/\"/g, '&quot;')}">${l.message || ''}</td>
+          <td title="${(l.message || '').replace(/"/g, '&quot;')}">${l.message || ''}</td>
         </tr>
       `).join('');
     }
@@ -449,17 +554,24 @@ HTML_PAGE = """<!doctype html>
         body: JSON.stringify(payload)
       });
       await loadSettings();
-      alert('Settings saved.');
+      toast('Settings saved.', 'success');
     }
 
     async function refreshAll() {
       await Promise.all([loadOverview(), loadEvents(), loadLogs(), loadSystemLogs()]);
+      document.getElementById('last-refreshed').textContent = new Date().toLocaleTimeString();
+      countdown = 10;
     }
 
-    document.getElementById('refresh').addEventListener('click', refreshAll);
-    document.getElementById('refresh-logs').addEventListener('click', () => loadSystemLogs().catch(err => alert(err.message)));
+    function updateTokenCounts() {
+      document.getElementById('x_bearer_token_count').textContent = document.getElementById('x_bearer_token').value.length;
+      document.getElementById('telegram_bot_token_count').textContent = document.getElementById('telegram_bot_token').value.length;
+    }
+
+    document.getElementById('refresh').addEventListener('click', () => refreshAll().catch(err => toast(err.message, 'error')));
+    document.getElementById('refresh-logs').addEventListener('click', () => loadSystemLogs().catch(err => toast(err.message, 'error')));
     document.getElementById('log-level').addEventListener('change', () => loadSystemLogs().catch(err => console.error(err)));
-    document.getElementById('save-settings').addEventListener('click', () => saveSettings().catch(err => alert(err.message)));
+    document.getElementById('save-settings').addEventListener('click', () => saveSettings().catch(err => toast(err.message, 'error')));
     document.getElementById('process').addEventListener('click', async () => {
       const btn = document.getElementById('process');
       btn.disabled = true;
@@ -467,9 +579,9 @@ HTML_PAGE = """<!doctype html>
       try {
         const result = await getJson('/api/process-once', { method: 'POST' });
         await refreshAll();
-        alert(`Processed ${result.processed} repost event(s).`);
+        toast(`Processed ${result.processed} repost event(s).`, "success");
       } catch (err) {
-        alert(err.message);
+        toast(err.message, "error");
       } finally {
         btn.disabled = false;
         btn.textContent = 'Process once now';
@@ -482,21 +594,71 @@ HTML_PAGE = """<!doctype html>
       try {
         const result = await getJson('/api/force-refresh-retry', { method: 'POST' });
         await refreshAll();
-        alert(
+        toast(
           `Force refresh fetched ${result.fetched} repost(s). ` +
           `Retried ${result.retried} unsent and recovered ${result.retried_success}. ` +
-          `Newly processed: ${result.new_processed}.`
+          `Newly processed: ${result.new_processed}.`,
+          "success"
         );
       } catch (err) {
-        alert(err.message);
+        toast(err.message, "error");
       } finally {
         btn.disabled = false;
         btn.textContent = 'Force refresh + retry unsent';
       }
     });
 
-    Promise.all([loadSettings(), refreshAll()]).catch(err => console.error(err));
-    setInterval(() => refreshAll().catch(err => console.error(err)), 10000);
+    Promise.all([loadSettings(), refreshAll()]).catch(err => toast(err.message, 'error'));
+
+    document.getElementById('toggle-auto').addEventListener('click', () => {
+      autoRefreshEnabled = !autoRefreshEnabled;
+      document.getElementById('toggle-auto').textContent = autoRefreshEnabled ? 'Pause auto refresh' : 'Resume auto refresh';
+      toast(autoRefreshEnabled ? 'Auto refresh resumed.' : 'Auto refresh paused.');
+    });
+
+    document.getElementById('query').addEventListener('input', () => {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => loadEvents().catch(err => toast(err.message, 'error')), 250);
+    });
+    document.getElementById('status').addEventListener('change', () => loadEvents().catch(err => toast(err.message, 'error')));
+    document.getElementById('x_bearer_token').addEventListener('input', updateTokenCounts);
+    document.getElementById('telegram_bot_token').addEventListener('input', updateTokenCounts);
+
+    document.addEventListener('click', (event) => {
+      const btn = event.target.closest('.copy-btn');
+      if (!btn) return;
+      const text = btn.getAttribute('data-copy') || '';
+      navigator.clipboard?.writeText(text).then(
+        () => toast('Copied to clipboard.', 'success'),
+        () => toast('Could not copy to clipboard.', 'error')
+      );
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === '/' && document.activeElement?.id !== 'query') {
+        event.preventDefault();
+        document.getElementById('query').focus();
+        return;
+      }
+      if (event.key.toLowerCase() === 'r' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName || '')) {
+        refreshAll().catch(err => toast(err.message, 'error'));
+      }
+    });
+
+    window.addEventListener('online', () => toast('Connection restored.', 'success'));
+    window.addEventListener('offline', () => toast('You are offline. Data may be stale.', 'error'));
+
+    setInterval(() => {
+      if (autoRefreshEnabled) {
+        refreshAll().catch(err => toast(err.message, 'error'));
+      }
+    }, 10000);
+    setInterval(() => {
+      if (autoRefreshEnabled) {
+        countdown = countdown <= 0 ? 10 : countdown - 1;
+      }
+      document.getElementById('refresh-countdown').textContent = String(countdown);
+    }, 1000);
   </script>
 </body>
 </html>
