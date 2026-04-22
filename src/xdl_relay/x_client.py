@@ -67,7 +67,10 @@ class XClient:
 
             for tweet in tweets:
                 references = tweet.get("referenced_tweets", [])
-                retweet_ref = next((ref for ref in references if ref.get("type") == "retweeted"), None)
+                retweet_ref = next(
+                    (ref for ref in references if ref.get("type") in {"retweeted", "reposted"}),
+                    None,
+                )
                 if not retweet_ref:
                     continue
                 repost_ref = included_tweets.get(retweet_ref.get("id", ""))

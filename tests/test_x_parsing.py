@@ -47,6 +47,23 @@ class TestXParsing(unittest.TestCase):
         self.assertIn("/users/by/username/example_user", mock_get.call_args_list[0].args[0])
         self.assertIn("/users/123/tweets?", mock_get.call_args_list[1].args[0])
 
+    def test_get_new_reposts_accepts_reposted_reference_type(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        timeline_payload = {
+            "data": [{"id": "201", "text": "repost", "referenced_tweets": [{"type": "reposted", "id": "700"}]}],
+            "includes": {
+                "tweets": [{"id": "700", "author_id": "a1", "text": "orig", "attachments": {"media_keys": ["3_9"]}}],
+                "media": [{"media_key": "3_9", "type": "photo", "url": "https://x/img9.jpg"}],
+            },
+            "meta": {},
+        }
+
+        with patch("xdl_relay.x_client.get_json", return_value=timeline_payload):
+            events = client.get_new_reposts("1")
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].repost_tweet_id, "201")
+
 
 if __name__ == "__main__":
     unittest.main()
