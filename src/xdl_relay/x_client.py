@@ -33,10 +33,28 @@ class XClient:
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
         resolved_user_id = self._resolve_user_id(user_id)
         logger.info("Fetching reposts for user_id=%s resolved_user_id=%s since_id=%s", user_id, resolved_user_id, since_id)
-        return self._collect_reposts_for_endpoint(
+        profile_events = self._collect_reposts_for_endpoint(
             f"/users/{resolved_user_id}/tweets",
             since_id=since_id,
         )
+        timeline_events: list[RepostEvent] = []
+        timeline_endpoint = f"/users/{resolved_user_id}/timelines/reverse_chronological"
+        try:
+            timeline_events = self._collect_reposts_for_endpoint(
+                timeline_endpoint,
+                since_id=since_id,
+            )
+        except RuntimeError as exc:
+            logger.warning("Reverse timeline request failed for endpoint=%s: %s", timeline_endpoint, exc)
+
+        merged_by_id = {event.repost_tweet_id: event for event in profile_events}
+        merged_by_id.update({event.repost_tweet_id: event for event in timeline_events})
+        merged = sorted(merged_by_id.values(), key=lambda event: int(event.repost_tweet_id))
+        logger.info(
+            "Collected %s unique repost event(s) across profile+timeline endpoints",
+            len(merged),
+        )
+        return merged
 
     def _collect_reposts_for_endpoint(self, endpoint_path: str, since_id: str | None = None) -> list[RepostEvent]:
         events: list[RepostEvent] = []
