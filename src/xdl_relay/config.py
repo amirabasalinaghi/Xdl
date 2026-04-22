@@ -55,3 +55,16 @@ class Settings:
             telegram_failure_alerts=os.getenv("TELEGRAM_FAILURE_ALERTS", "1").lower()
             in {"1", "true", "yes", "on"},
         )
+
+    def to_env_dict(self) -> dict[str, str]:
+        return {
+            "X_USER_ID": self.x_user_id,
+            "X_CLIENT_ID": self.x_client_id,
+            "TELEGRAM_BOT_TOKEN": self.telegram_bot_token,
+            "TELEGRAM_CHAT_ID": self.telegram_chat_id,
+            "X_OAUTH_REDIRECT_URI": self.x_oauth_redirect_uri,
+            "X_OAUTH_TOKEN_PATH": self.x_oauth_token_path,
+            "POLL_INTERVAL_SECONDS": str(self.poll_interval_seconds),
+            "DB_PATH": self.db_path,
+            "MEDIA_DIR": self.media_dir,
+        }

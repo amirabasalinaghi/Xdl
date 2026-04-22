@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from xdl_relay.config import Settings
 from xdl_relay.service import RelayService
 
 logger = logging.getLogger(__name__)
@@ -96,6 +98,18 @@ HTML_PAGE = """<!doctype html>
 
     <div class=\"grid\" id=\"stats\"></div>
 
+    <section class=\"card\" style=\"margin-bottom:16px\">
+      <h3>Configuration</h3>
+      <div class=\"toolbar\">
+        <input id=\"x_user_id\" placeholder=\"X_USER_ID\" />
+        <input id=\"x_client_id\" placeholder=\"X_CLIENT_ID\" />
+        <input id=\"telegram_bot_token\" placeholder=\"TELEGRAM_BOT_TOKEN\" />
+        <input id=\"telegram_chat_id\" placeholder=\"TELEGRAM_CHAT_ID\" />
+        <button id=\"save-settings\">Save settings</button>
+      </div>
+      <div class=\"muted\">Set IDs/keys here, then use Process once or enable polling.</div>
+    </section>
+
     <div class=\"row\">
       <section class=\"card\">
         <h3>Repost events</h3>
@@ -181,11 +195,36 @@ HTML_PAGE = """<!doctype html>
       `).join('');
     }
 
+
+    async function loadSettings() {
+      const s = await getJson('/api/settings');
+      document.getElementById('x_user_id').value = s.x_user_id || '';
+      document.getElementById('x_client_id').value = s.x_client_id || '';
+      document.getElementById('telegram_bot_token').value = s.telegram_bot_token || '';
+      document.getElementById('telegram_chat_id').value = s.telegram_chat_id || '';
+    }
+
+    async function saveSettings() {
+      const payload = {
+        x_user_id: document.getElementById('x_user_id').value.trim(),
+        x_client_id: document.getElementById('x_client_id').value.trim(),
+        telegram_bot_token: document.getElementById('telegram_bot_token').value.trim(),
+        telegram_chat_id: document.getElementById('telegram_chat_id').value.trim()
+      };
+      await getJson('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      alert('Settings saved.');
+    }
+
     async function refreshAll() {
       await Promise.all([loadOverview(), loadEvents(), loadLogs()]);
     }
 
     document.getElementById('refresh').addEventListener('click', refreshAll);
+    document.getElementById('save-settings').addEventListener('click', () => saveSettings().catch(err => alert(err.message)));
     document.getElementById('process').addEventListener('click', async () => {
       const btn = document.getElementById('process');
       btn.disabled = true;
@@ -202,7 +241,7 @@ HTML_PAGE = """<!doctype html>
       }
     });
 
-    refreshAll().catch(err => console.error(err));
+    Promise.all([loadSettings(), refreshAll()]).catch(err => console.error(err));
     setInterval(() => refreshAll().catch(err => console.error(err)), 10000);
   </script>
 </body>
@@ -293,6 +332,10 @@ class DashboardServer:
                     self._json_response(relay_service.db.list_delivery_logs(limit=limit))
                     return
 
+                if parsed.path == "/api/settings":
+                    self._json_response(_settings_payload(relay_service.settings))
+                    return
+
                 self._json_response({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
 
             def do_POST(self) -> None:  # noqa: N802
@@ -306,6 +349,33 @@ class DashboardServer:
                         self._json_response({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
                     return
 
+                if parsed.path == "/api/settings":
+                    length = int(self.headers.get("Content-Length", "0"))
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode("utf-8") or "{}")
+                    updated = Settings(
+                        x_user_id=data.get("x_user_id") or relay_service.settings.x_user_id,
+                        x_client_id=data.get("x_client_id") or relay_service.settings.x_client_id,
+                        telegram_bot_token=data.get("telegram_bot_token") or relay_service.settings.telegram_bot_token,
+                        telegram_chat_id=data.get("telegram_chat_id") or relay_service.settings.telegram_chat_id,
+                        x_oauth_redirect_uri=relay_service.settings.x_oauth_redirect_uri,
+                        x_oauth_token_path=relay_service.settings.x_oauth_token_path,
+                        poll_interval_seconds=relay_service.settings.poll_interval_seconds,
+                        db_path=relay_service.settings.db_path,
+                        media_dir=relay_service.settings.media_dir,
+                        http_timeout_seconds=relay_service.settings.http_timeout_seconds,
+                        http_retries=relay_service.settings.http_retries,
+                        http_backoff_seconds=relay_service.settings.http_backoff_seconds,
+                        max_media_bytes=relay_service.settings.max_media_bytes,
+                        x_max_pages=relay_service.settings.x_max_pages,
+                        telegram_include_caption=relay_service.settings.telegram_include_caption,
+                        telegram_failure_alerts=relay_service.settings.telegram_failure_alerts,
+                    )
+                    _write_env_file(updated)
+                    relay_service.update_settings(updated)
+                    self._json_response(_settings_payload(updated))
+                    return
+
                 self._json_response({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
 
             def log_message(self, format: str, *args) -> None:  # noqa: A003
@@ -313,6 +383,20 @@ class DashboardServer:
 
         return Handler
 
+
+
+def _env_file_path() -> str:
+    return os.getenv("RELAY_ENV_FILE", "/etc/xdl-relay/xdl-relay.env")
+
+
+def _write_env_file(settings: Settings) -> None:
+    lines = [f"{k}={v}" for k, v in settings.to_env_dict().items()]
+    with open(_env_file_path(), "w", encoding="utf-8") as fp:
+        fp.write("\n".join(lines) + "\n")
+
+
+def _settings_payload(settings: Settings) -> dict[str, str]:
+    return settings.to_env_dict()
 
 def _to_int(value: str, default: int) -> int:
     try:

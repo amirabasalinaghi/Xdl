@@ -31,6 +31,21 @@ class RelayService:
         self.media_dir = Path(settings.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
+    def update_settings(self, settings: Settings) -> None:
+        self.settings = settings
+        self.x_client = XClient(
+            timeout=settings.http_timeout_seconds,
+            retries=settings.http_retries,
+            backoff_seconds=settings.http_backoff_seconds,
+            max_pages=settings.x_max_pages,
+            client_id=settings.x_client_id,
+            redirect_uri=settings.x_oauth_redirect_uri,
+            token_path=settings.x_oauth_token_path,
+        )
+        self.telegram_client = TelegramClient(settings.telegram_bot_token)
+        self.media_dir = Path(settings.media_dir)
+        self.media_dir.mkdir(parents=True, exist_ok=True)
+
     def process_once(self) -> int:
         since_id = self.db.get_last_seen_tweet_id()
         reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id)
