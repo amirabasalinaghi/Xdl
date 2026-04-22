@@ -89,6 +89,29 @@ class TestXParsing(unittest.TestCase):
         self.assertEqual(len(events[0].media), 1)
         self.assertEqual(events[0].media[0].media_key, "3_ok")
 
+    def test_extract_repost_events_skips_non_repost_replies(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [
+                {
+                    "id": "401",
+                    "text": "reply with media",
+                    "author_id": "1",
+                    "referenced_tweets": [{"type": "replied_to", "id": "120"}],
+                    "attachments": {"media_keys": ["3_401"]},
+                }
+            ],
+            "includes": {
+                "tweets": [],
+                "media": [{"media_key": "3_401", "type": "photo", "url": "https://x/img401.jpg"}],
+            },
+            "meta": {},
+        }
+
+        events = client._extract_repost_events(payload["data"], payload)
+
+        self.assertEqual(events, [])
+
     def test_get_new_reposts_includes_profile_post_media(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
         profile_payload = {
