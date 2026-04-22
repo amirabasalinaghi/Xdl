@@ -203,37 +203,37 @@ HTML_PAGE = """<!doctype html>
           <div class=\"saved-note\" id=\"saved_media_download_mode\"></div>
         </div>
         <div class=\"field\">
-          <label for=\"poll_interval_seconds\">Polling Interval (seconds)</label>
+          <label for=\"poll_interval_seconds\">Polling Interval (seconds, 1-3600)</label>
           <input id=\"poll_interval_seconds\" type=\"number\" min=\"1\" max=\"3600\" step=\"1\" />
           <div class=\"help\">How often the relay checks X for new reposts. Allowed range: 1 to 3600 seconds.</div>
           <div class=\"saved-note\" id=\"saved_poll_interval_seconds\"></div>
         </div>
         <div class=\"field\">
-          <label for=\"http_timeout_seconds\">HTTP Timeout (seconds)</label>
+          <label for=\"http_timeout_seconds\">HTTP Timeout (seconds, 1-300)</label>
           <input id=\"http_timeout_seconds\" type=\"number\" min=\"1\" max=\"300\" step=\"1\" />
           <div class=\"help\">Maximum time to wait for each API or media download request before timing out. Allowed range: 1 to 300 seconds.</div>
           <div class=\"saved-note\" id=\"saved_http_timeout_seconds\"></div>
         </div>
         <div class=\"field\">
-          <label for=\"http_retries\">HTTP Retries</label>
+          <label for=\"http_retries\">HTTP Retries (1-10)</label>
           <input id=\"http_retries\" type=\"number\" min=\"1\" max=\"10\" step=\"1\" />
           <div class=\"help\">Number of retry attempts after a failed HTTP request. Allowed range: 1 to 10.</div>
           <div class=\"saved-note\" id=\"saved_http_retries\"></div>
         </div>
         <div class=\"field\">
-          <label for=\"http_backoff_seconds\">Retry Backoff (seconds)</label>
+          <label for=\"http_backoff_seconds\">Retry Backoff (seconds, 0-60)</label>
           <input id=\"http_backoff_seconds\" type=\"number\" min=\"0\" max=\"60\" step=\"0.1\" />
           <div class=\"help\">Delay multiplier between retries. Allowed range: 0 to 60 seconds.</div>
           <div class=\"saved-note\" id=\"saved_http_backoff_seconds\"></div>
         </div>
         <div class=\"field\">
-          <label for=\"max_media_bytes\">Max Media Size (bytes)</label>
+          <label for=\"max_media_bytes\">Max Media Size (bytes, 1-52,428,800)</label>
           <input id=\"max_media_bytes\" type=\"number\" min=\"1\" max=\"52428800\" step=\"1\" />
           <div class=\"help\">Largest media file size allowed for download. Allowed range: 1 to 52,428,800 bytes (50 MB cloud Telegram Bot API max).</div>
           <div class=\"saved-note\" id=\"saved_max_media_bytes\"></div>
         </div>
         <div class=\"field\">
-          <label for=\"x_max_pages\">X API Max Pages</label>
+          <label for=\"x_max_pages\">X API Max Pages (1-100)</label>
           <input id=\"x_max_pages\" type=\"number\" min=\"1\" max=\"100\" step=\"1\" />
           <div class=\"help\">Maximum number of API pages fetched per sync cycle. Allowed range: 1 to 100 pages.</div>
           <div class=\"saved-note\" id=\"saved_x_max_pages\"></div>
@@ -371,7 +371,7 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('http_timeout_seconds').value = s.http_timeout_seconds || 60;
       document.getElementById('http_retries').value = s.http_retries || 5;
       document.getElementById('http_backoff_seconds').value = s.http_backoff_seconds || 2;
-      document.getElementById('max_media_bytes').value = s.max_media_bytes || 209715200;
+      document.getElementById('max_media_bytes').value = s.max_media_bytes || 52428800;
       document.getElementById('x_max_pages').value = s.x_max_pages || 64;
 
       setSavedHint('x_user_id', s.x_user_id ? `Saved: ${s.x_user_id}` : 'Not saved');
@@ -383,7 +383,7 @@ HTML_PAGE = """<!doctype html>
       setSavedHint('http_timeout_seconds', `Saved: ${s.http_timeout_seconds || 60}s`);
       setSavedHint('http_retries', `Saved: ${s.http_retries || 5}`);
       setSavedHint('http_backoff_seconds', `Saved: ${s.http_backoff_seconds || 2}s`);
-      setSavedHint('max_media_bytes', `Saved: ${s.max_media_bytes || 209715200}`);
+      setSavedHint('max_media_bytes', `Saved: ${s.max_media_bytes || 52428800}`);
       setSavedHint('x_max_pages', `Saved: ${s.x_max_pages || 64}`);
     }
 
@@ -419,6 +419,7 @@ HTML_PAGE = """<!doctype html>
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      await loadSettings();
       alert('Settings saved.');
     }
 

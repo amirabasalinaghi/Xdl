@@ -8,6 +8,7 @@ from unittest import mock
 
 from xdl_relay.config import Settings
 from xdl_relay.webui import (
+    HTML_PAGE,
     InMemoryLogHandler,
     _env_file_path,
     _normalize_download_mode,
@@ -19,6 +20,15 @@ from xdl_relay.webui import (
 
 
 class TestWebUISettings(unittest.TestCase):
+    def test_dashboard_numeric_fields_describe_limits(self) -> None:
+        self.assertIn("Polling Interval (seconds, 1-3600)", HTML_PAGE)
+        self.assertIn("HTTP Timeout (seconds, 1-300)", HTML_PAGE)
+        self.assertIn("HTTP Retries (1-10)", HTML_PAGE)
+        self.assertIn("Retry Backoff (seconds, 0-60)", HTML_PAGE)
+        self.assertIn("Max Media Size (bytes, 1-52,428,800)", HTML_PAGE)
+        self.assertIn("X API Max Pages (1-100)", HTML_PAGE)
+        self.assertIn("s.max_media_bytes || 52428800", HTML_PAGE)
+
     def test_normalize_download_mode(self) -> None:
         self.assertEqual(_normalize_download_mode("pic", "both"), "pic")
         self.assertEqual(_normalize_download_mode("video", "both"), "video")
