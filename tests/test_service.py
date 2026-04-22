@@ -34,7 +34,7 @@ class TestServiceBehavior(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(
                 x_user_id="user",
-                x_client_id="cid",
+                x_bearer_token="bearer",
                 telegram_bot_token="tg",
                 telegram_chat_id="chat",
                 db_path=str(Path(tmp) / "relay.db"),
@@ -66,7 +66,7 @@ class TestServiceBehavior(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(
                 x_user_id="user",
-                x_client_id="cid",
+                x_bearer_token="bearer",
                 telegram_bot_token="tg",
                 telegram_chat_id="chat",
                 db_path=str(Path(tmp) / "relay.db"),
@@ -91,7 +91,7 @@ class TestServiceBehavior(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(
                 x_user_id="user",
-                x_client_id="cid",
+                x_bearer_token="bearer",
                 telegram_bot_token="tg",
                 telegram_chat_id="chat",
                 db_path=str(Path(tmp) / "relay.db"),
@@ -108,7 +108,7 @@ class TestServiceBehavior(unittest.TestCase):
             service.update_settings(
                 Settings(
                     x_user_id="user",
-                    x_client_id="cid",
+                    x_bearer_token="bearer",
                     telegram_bot_token="tg",
                     telegram_chat_id="chat",
                     db_path=str(Path(tmp) / "relay.db"),

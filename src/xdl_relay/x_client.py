@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 
 from xdl_relay.http_utils import get_json
@@ -24,6 +25,7 @@ class XClient:
         self.bearer_token = bearer_token
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
+        resolved_user_id = self._resolve_user_id(user_id)
         events: list[RepostEvent] = []
         max_id: str | None = None
         pages = 0
@@ -32,7 +34,7 @@ class XClient:
             params = {
                 "max_results": "100",
                 "exclude": "replies",
-                "tweet.fields": "text,referenced_tweets,attachments",
+                "tweet.fields": "text,author_id,referenced_tweets,attachments",
                 "expansions": "referenced_tweets.id,referenced_tweets.id.author_id,referenced_tweets.id.attachments.media_keys",
                 "media.fields": "type,url,variants,video_info",
             }
@@ -41,7 +43,7 @@ class XClient:
             if max_id:
                 params["pagination_token"] = max_id
 
-            url = f"{self.API_BASE_URL}/users/{user_id}/tweets?{urlencode(params)}"
+            url = f"{self.API_BASE_URL}/users/{resolved_user_id}/tweets?{urlencode(params)}"
             payload = get_json(
                 url,
                 headers=self._auth_headers(),
@@ -90,6 +92,31 @@ class XClient:
                 break
 
         return sorted(events, key=lambda e: int(e.repost_tweet_id))
+
+    def _resolve_user_id(self, user_id: str) -> str:
+        normalized = user_id.strip()
+        if normalized.isdigit():
+            return normalized
+
+        username = normalized.lstrip("@")
+        url = f"{self.API_BASE_URL}/users/by/username/{username}"
+        try:
+            payload = get_json(
+                url,
+                headers=self._auth_headers(),
+                timeout=self.timeout,
+                retries=self.retries,
+                backoff_seconds=self.backoff_seconds,
+            )
+            resolved = payload.get("data", {}).get("id", "")
+            if resolved:
+                return str(resolved)
+        except HTTPError:
+            # Preserve the original value for backward compatibility and
+            # allow API errors to be surfaced by get_new_reposts.
+            pass
+
+        return normalized
 
     def _auth_headers(self) -> dict[str, str]:
         if not self.bearer_token:

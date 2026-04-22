@@ -8,7 +8,7 @@ from xdl_relay.x_client import XClient
 
 class TestXPagination(unittest.TestCase):
     def test_get_new_reposts_follows_max_id_pages(self) -> None:
-        client = XClient(max_pages=5, client_id="cid")
+        client = XClient(max_pages=5, bearer_token="token")
 
         page1 = {
             "data": [{"id": "101", "text": "RT one", "referenced_tweets": [{"type": "retweeted", "id": "500"}]}],
@@ -27,11 +27,8 @@ class TestXPagination(unittest.TestCase):
             "meta": {},
         }
 
-        token = type("FakeToken", (), {"access_token": "abc", "is_expired": lambda self: False})()
-        with patch("xdl_relay.x_client.OAuthTokenStore.load", return_value=token), patch(
-            "xdl_relay.x_client.get_json", side_effect=[page1, page2]
-        ) as mock_get:
-            events = client.get_new_reposts("u1")
+        with patch("xdl_relay.x_client.get_json", side_effect=[page1, page2]) as mock_get:
+            events = client.get_new_reposts("1")
 
         self.assertEqual(len(events), 2)
         self.assertEqual([e.repost_tweet_id for e in events], ["101", "102"])
