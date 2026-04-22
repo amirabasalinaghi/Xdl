@@ -76,6 +76,15 @@ remove_previous_install() {
   ${SUDO} systemctl daemon-reload
 }
 
+prepare_reinstall() {
+  echo
+  echo "Previous installation detected. Reinstalling runtime while preserving data/settings..."
+  ${SUDO} systemctl disable --now "${SERVICE_NAME}" >/dev/null 2>&1 || true
+  ${SUDO} rm -f "${SERVICE_FILE}"
+  ${SUDO} rm -rf "${INSTALL_DIR}/.venv"
+  ${SUDO} systemctl daemon-reload
+}
+
 echo "== XDL Relay Linux Service Installer =="
 echo "This installs only the relay runtime + Web UI."
 echo "API keys, IDs, bot token, and relay behavior are configured in the Web UI after install."
@@ -96,8 +105,12 @@ if [[ ! -f "${REPO_DIR}/pyproject.toml" ]]; then
 fi
 
 if ${SUDO} test -f "${SERVICE_FILE}" || ${SUDO} test -d "${INSTALL_DIR}" || ${SUDO} test -f "${ENV_FILE}"; then
-  if ask_yes_no_default "REINSTALL" "Previous installation detected. Remove completely and reinstall?" "yes"; then
-    remove_previous_install
+  if ask_yes_no_default "REINSTALL" "Previous installation detected. Reinstall?" "yes"; then
+    if ask_yes_no_default "RESET_INSTALL_STATE" "Remove existing database/media/environment settings too?" "no"; then
+      remove_previous_install
+    else
+      prepare_reinstall
+    fi
   else
     echo "Aborting install to avoid partial overwrite."
     exit 1
@@ -131,7 +144,10 @@ run_as_service_user "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install --upgrade p
 run_as_service_user "${SERVICE_USER}" "${VENV_PATH}/bin/pip" install "${REPO_DIR}"
 
 echo "Writing environment file to ${ENV_FILE}..."
-${SUDO} tee "${ENV_FILE}" >/dev/null <<EOV
+if ${SUDO} test -f "${ENV_FILE}"; then
+  echo "Existing environment file detected; preserving current API/database settings."
+else
+  ${SUDO} tee "${ENV_FILE}" >/dev/null <<EOV
 # Configure these in the Web UI after installation.
 X_USER_ID=SET_IN_WEBUI
 X_BEARER_TOKEN=SET_IN_WEBUI
@@ -142,6 +158,7 @@ DB_PATH=${DB_PATH}
 MEDIA_DIR=${MEDIA_DIR}
 RELAY_ENV_FILE=${ENV_FILE}
 EOV
+fi
 ${SUDO} chmod 600 "${ENV_FILE}"
 ${SUDO} chown "${SERVICE_USER}:${SERVICE_GROUP}" "${ENV_FILE}"
 

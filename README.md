@@ -80,10 +80,11 @@ bash scripts/install_linux_service.sh
 ```
 
 The installer now focuses on runtime deployment only, then launches the Web UI for configuration. It will:
-- Fully remove any previous install (after confirmation)
+- Reinstall runtime dependencies while keeping your existing environment/database/media settings by default
+- Optionally perform a full wipe when you explicitly choose it during reinstall
 - Create a virtualenv under `/opt/xdl-relay/.venv`
 - Install the package
-- Write `/etc/xdl-relay/xdl-relay.env` with placeholder values
+- Write `/etc/xdl-relay/xdl-relay.env` with placeholder values only on first install (existing env file is preserved)
 - Create and start a `systemd` service named `xdl-relay` in Web UI mode
 - Print the Web UI URL so you can configure IDs, API keys, bot settings, and other options there
 
