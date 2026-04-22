@@ -8,6 +8,10 @@ from xdl_relay.x_client import XClient
 
 
 class TestXParsing(unittest.TestCase):
+    def test_default_max_pages_is_backfill_friendly(self) -> None:
+        client = XClient()
+        self.assertEqual(client.max_pages, 100)
+
     def test_convert_media_selects_best_variant(self) -> None:
         client = XClient()
         media = {

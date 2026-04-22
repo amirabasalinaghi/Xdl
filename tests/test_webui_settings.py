@@ -27,6 +27,7 @@ class TestWebUISettings(unittest.TestCase):
         self.assertIn("Retry Backoff (seconds, 0-60)", HTML_PAGE)
         self.assertIn("Max Media Size (bytes, 1-52,428,800)", HTML_PAGE)
         self.assertIn("X API Max Pages (1-100)", HTML_PAGE)
+        self.assertIn("X API Page Size (5-100)", HTML_PAGE)
         self.assertIn("s.max_media_bytes || 52428800", HTML_PAGE)
 
     def test_normalize_download_mode(self) -> None:
@@ -105,7 +106,8 @@ class TestWebUISettings(unittest.TestCase):
         self.assertEqual(payload["http_retries"], 5)
         self.assertEqual(payload["http_backoff_seconds"], 2.0)
         self.assertEqual(payload["max_media_bytes"], 200 * 1024 * 1024)
-        self.assertEqual(payload["x_max_pages"], 64)
+        self.assertEqual(payload["x_max_pages"], 100)
+        self.assertEqual(payload["x_page_size"], 100)
         self.assertEqual(payload["X_USER_ID"], "123")
 
 

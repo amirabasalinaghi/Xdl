@@ -27,6 +27,8 @@ MIN_MAX_MEDIA_BYTES = 1
 MAX_MAX_MEDIA_BYTES = 50 * 1024 * 1024
 MIN_X_MAX_PAGES = 1
 MAX_X_MAX_PAGES = 100
+MIN_X_PAGE_SIZE = 5
+MAX_X_PAGE_SIZE = 100
 
 
 class InMemoryLogHandler(logging.Handler):
@@ -322,6 +324,12 @@ HTML_PAGE = """<!doctype html>
           <div class=\"help\">Maximum number of API pages fetched per sync cycle. Allowed range: 1 to 100 pages.</div>
           <div class=\"saved-note\" id=\"saved_x_max_pages\"></div>
         </div>
+        <div class=\"field\">
+          <label for=\"x_page_size\">X API Page Size (5-100)</label>
+          <input id=\"x_page_size\" type=\"number\" min=\"5\" max=\"100\" step=\"1\" />
+          <div class=\"help\">Number of timeline items requested per page. Allowed range: 5 to 100 items.</div>
+          <div class=\"saved-note\" id=\"saved_x_page_size\"></div>
+        </div>
       </div>
       <div class=\"toolbar\">
         <button id=\"save-settings\">Save settings</button>
@@ -498,7 +506,8 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('http_retries').value = s.http_retries || 5;
       document.getElementById('http_backoff_seconds').value = s.http_backoff_seconds || 2;
       document.getElementById('max_media_bytes').value = s.max_media_bytes || 52428800;
-      document.getElementById('x_max_pages').value = s.x_max_pages || 64;
+      document.getElementById('x_max_pages').value = s.x_max_pages || 100;
+      document.getElementById('x_page_size').value = s.x_page_size || 100;
 
       setSavedHint('x_user_id', s.x_user_id ? `Saved: ${s.x_user_id}` : 'Not saved');
       setSavedHint('x_bearer_token', maskSecret(s.x_bearer_token));
@@ -510,7 +519,8 @@ HTML_PAGE = """<!doctype html>
       setSavedHint('http_retries', `Saved: ${s.http_retries || 5}`);
       setSavedHint('http_backoff_seconds', `Saved: ${s.http_backoff_seconds || 2}s`);
       setSavedHint('max_media_bytes', `Saved: ${s.max_media_bytes || 52428800}`);
-      setSavedHint('x_max_pages', `Saved: ${s.x_max_pages || 64}`);
+      setSavedHint('x_max_pages', `Saved: ${s.x_max_pages || 100}`);
+      setSavedHint('x_page_size', `Saved: ${s.x_page_size || 100}`);
     }
 
     async function loadSystemLogs() {
@@ -542,7 +552,8 @@ HTML_PAGE = """<!doctype html>
         http_retries: document.getElementById('http_retries').value,
         http_backoff_seconds: document.getElementById('http_backoff_seconds').value,
         max_media_bytes: document.getElementById('max_media_bytes').value,
-        x_max_pages: document.getElementById('x_max_pages').value
+        x_max_pages: document.getElementById('x_max_pages').value,
+        x_page_size: document.getElementById('x_page_size').value
       };
       await getJson('/api/settings', {
         method: 'POST',
@@ -825,6 +836,12 @@ class DashboardServer:
                             min_value=MIN_X_MAX_PAGES,
                             max_value=MAX_X_MAX_PAGES,
                         ),
+                        x_page_size=_to_int_or_default(
+                            data.get("x_page_size"),
+                            relay_service.settings.x_page_size,
+                            min_value=MIN_X_PAGE_SIZE,
+                            max_value=MAX_X_PAGE_SIZE,
+                        ),
                         media_download_mode=_normalize_download_mode(
                             data.get("media_download_mode"), relay_service.settings.media_download_mode
                         ),
@@ -879,6 +896,7 @@ def _settings_payload(settings: Settings) -> dict[str, str]:
         "http_backoff_seconds": settings.http_backoff_seconds,
         "max_media_bytes": settings.max_media_bytes,
         "x_max_pages": settings.x_max_pages,
+        "x_page_size": settings.x_page_size,
         "media_download_mode": settings.media_download_mode,
     }
 

@@ -19,13 +19,15 @@ class XClient:
         timeout: int = 30,
         retries: int = 3,
         backoff_seconds: float = 1.0,
-        max_pages: int = 5,
+        max_pages: int = 100,
+        page_size: int = 100,
         bearer_token: str = "",
     ) -> None:
         self.timeout = timeout
         self.retries = retries
         self.backoff_seconds = backoff_seconds
         self.max_pages = max_pages
+        self.page_size = min(100, max(5, page_size))
         self.bearer_token = bearer_token
         self._reverse_chronological_supported: bool | None = None
 
@@ -68,13 +70,19 @@ class XClient:
 
     def _collect_reposts_for_endpoint(self, endpoint_path: str, since_id: str | None = None) -> list[RepostEvent]:
         events: list[RepostEvent] = []
-        max_id: str | None = None
+        pagination_token: str | None = None
         pages = 0
+        reached_page_limit = False
 
         while pages < self.max_pages:
-            params = self._timeline_params(since_id=since_id, pagination_token=max_id)
+            params = self._timeline_params(since_id=since_id, pagination_token=pagination_token)
             url = f"{self.API_BASE_URL}{endpoint_path}?{urlencode(params)}"
-            logger.debug("Requesting X timeline endpoint=%s page=%s next_token=%s", endpoint_path, pages + 1, max_id)
+            logger.debug(
+                "Requesting X timeline endpoint=%s page=%s next_token=%s",
+                endpoint_path,
+                pages + 1,
+                pagination_token,
+            )
             payload = get_json(
                 url,
                 headers=self._auth_headers(),
@@ -89,16 +97,26 @@ class XClient:
 
             events.extend(self._extract_repost_events(tweets, payload))
             pages += 1
-            max_id = payload.get("meta", {}).get("next_token")
-            if not max_id:
+            pagination_token = payload.get("meta", {}).get("next_token")
+            if not pagination_token:
                 break
+            if pages >= self.max_pages:
+                reached_page_limit = True
+                break
+        if reached_page_limit:
+            logger.warning(
+                "Stopped fetching endpoint=%s after max_pages=%s while next_token still exists. "
+                "Increase X_MAX_PAGES to backfill more historical reposts.",
+                endpoint_path,
+                self.max_pages,
+            )
         logger.info("Collected %s repost event(s) from endpoint=%s", len(events), endpoint_path)
 
         return sorted(events, key=lambda e: int(e.repost_tweet_id))
 
     def _timeline_params(self, since_id: str | None = None, pagination_token: str | None = None) -> dict[str, str]:
         params = {
-            "max_results": "100",
+            "max_results": str(self.page_size),
             "exclude": "replies",
             "tweet.fields": "text,author_id,referenced_tweets,attachments",
             "expansions": (
