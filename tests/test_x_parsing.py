@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import unittest
 from urllib.error import HTTPError
 from unittest.mock import patch
@@ -188,6 +189,28 @@ class TestXParsing(unittest.TestCase):
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].repost_tweet_id, "777")
+
+    def test_get_new_reposts_disables_reverse_timeline_after_unsupported_auth(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        profile_payload = {"data": [], "meta": {}}
+        unsupported = HTTPError(
+            url="https://api.x.com/2/users/1/timelines/reverse_chronological",
+            code=403,
+            msg="Forbidden",
+            hdrs=None,
+            fp=io.BytesIO(
+                b'{"type":"https://api.twitter.com/2/problems/unsupported-authentication","detail":"OAuth 2.0 Application-Only is forbidden"}'
+            ),
+        )
+
+        with patch("xdl_relay.x_client.get_json", side_effect=[profile_payload, unsupported, profile_payload]) as mock_get:
+            client.get_new_reposts("1")
+            client.get_new_reposts("1")
+
+        self.assertFalse(client._reverse_timeline_enabled)
+        requested_urls = [call.args[0] for call in mock_get.call_args_list]
+        self.assertEqual(len(requested_urls), 3)
+        self.assertEqual(sum("/timelines/reverse_chronological?" in url for url in requested_urls), 1)
 
 
 if __name__ == "__main__":
