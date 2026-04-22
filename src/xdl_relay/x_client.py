@@ -40,10 +40,21 @@ class XClient:
         # Fallback: X docs describe reverse chronological timeline as including
         # reposts/retweets in feed order. Some accounts/tokens do not surface
         # fresh repost actions consistently through /users/{id}/tweets.
-        return self._collect_reposts_for_endpoint(
-            f"/users/{resolved_user_id}/timelines/reverse_chronological",
-            since_id=since_id,
-        )
+        try:
+            return self._collect_reposts_for_endpoint(
+                f"/users/{resolved_user_id}/timelines/reverse_chronological",
+                since_id=since_id,
+            )
+        except HTTPError as exc:
+            # Application-only bearer tokens are rejected for this endpoint.
+            # Keep polling functional by treating this fallback as optional.
+            if exc.code == 403:
+                logger.warning(
+                    "Skipping reverse chronological fallback for user_id=%s due to HTTP 403.",
+                    resolved_user_id,
+                )
+                return events
+            raise
 
     def _collect_reposts_for_endpoint(self, endpoint_path: str, since_id: str | None = None) -> list[RepostEvent]:
         events: list[RepostEvent] = []
