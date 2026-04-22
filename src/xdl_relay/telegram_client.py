@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import uuid
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramClient:
@@ -83,8 +87,38 @@ class TelegramClient:
             method="POST",
             headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
         )
-        with urlopen(request, timeout=60) as response:
-            return json.loads(response.read().decode("utf-8"))
+        try:
+            with urlopen(request, timeout=60) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            body_snippet = ""
+            try:
+                body_snippet = exc.read(400).decode("utf-8", errors="replace")
+            except Exception:
+                body_snippet = "<unreadable>"
+            logger.error(
+                "Telegram API request failed: status=%s endpoint=%s reason=%s fields=%s files=%s body=%s",
+                exc.code,
+                url.rsplit("/", 1)[-1],
+                exc.reason,
+                sorted(fields.keys()),
+                sorted(files.keys()),
+                body_snippet,
+            )
+            raise
+
+        if not payload.get("ok", False):
+            logger.error(
+                "Telegram API returned ok=false endpoint=%s description=%s error_code=%s",
+                url.rsplit("/", 1)[-1],
+                payload.get("description"),
+                payload.get("error_code"),
+            )
+            raise RuntimeError(
+                f"Telegram API error {payload.get('error_code')}: {payload.get('description', 'unknown error')}"
+            )
+
+        return payload
 
     @staticmethod
     def _is_video(path: Path) -> bool:

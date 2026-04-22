@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from urllib.error import HTTPError
 from urllib.parse import unquote, urlencode
 
 from xdl_relay.http_utils import get_json
 from xdl_relay.models import MediaItem, RepostEvent
+
+logger = logging.getLogger(__name__)
 
 
 class XClient:
@@ -26,6 +29,7 @@ class XClient:
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
         resolved_user_id = self._resolve_user_id(user_id)
+        logger.info("Fetching reposts for user_id=%s resolved_user_id=%s since_id=%s", user_id, resolved_user_id, since_id)
         events = self._collect_reposts_for_endpoint(
             f"/users/{resolved_user_id}/tweets",
             since_id=since_id,
@@ -49,6 +53,7 @@ class XClient:
         while pages < self.max_pages:
             params = self._timeline_params(since_id=since_id, pagination_token=max_id)
             url = f"{self.API_BASE_URL}{endpoint_path}?{urlencode(params)}"
+            logger.debug("Requesting X timeline endpoint=%s page=%s next_token=%s", endpoint_path, pages + 1, max_id)
             payload = get_json(
                 url,
                 headers=self._auth_headers(),
@@ -58,6 +63,7 @@ class XClient:
             )
             tweets = payload.get("data", [])
             if not tweets:
+                logger.debug("No tweets returned endpoint=%s page=%s", endpoint_path, pages + 1)
                 break
 
             events.extend(self._extract_repost_events(tweets, payload))
@@ -65,6 +71,7 @@ class XClient:
             max_id = payload.get("meta", {}).get("next_token")
             if not max_id:
                 break
+        logger.info("Collected %s repost event(s) from endpoint=%s", len(events), endpoint_path)
 
         return sorted(events, key=lambda e: int(e.repost_tweet_id))
 
