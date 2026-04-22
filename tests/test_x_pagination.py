@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 from xdl_relay.x_client import XClient
 
@@ -33,6 +34,19 @@ class TestXPagination(unittest.TestCase):
         self.assertEqual(len(events), 2)
         self.assertEqual([e.repost_tweet_id for e in events], ["101", "102"])
         self.assertEqual(mock_get.call_count, 2)
+
+    def test_get_new_reposts_uses_valid_expansions(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {"data": [], "meta": {}}
+
+        with patch("xdl_relay.x_client.get_json", return_value=payload) as mock_get:
+            client.get_new_reposts("1")
+
+        requested_url = mock_get.call_args.args[0]
+        query = parse_qs(urlparse(requested_url).query)
+        expansions = query.get("expansions", [""])[0]
+        self.assertIn("attachments.media_keys", expansions)
+        self.assertNotIn("referenced_tweets.id.attachments.media_keys", expansions)
 
 
 if __name__ == "__main__":
