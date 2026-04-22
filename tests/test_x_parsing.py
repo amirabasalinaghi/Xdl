@@ -67,6 +67,22 @@ class TestXParsing(unittest.TestCase):
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].repost_tweet_id, "201")
+    def test_extract_repost_events_preserves_media_key_when_some_media_missing(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [{"id": "301", "text": "repost", "referenced_tweets": [{"type": "retweeted", "id": "900"}]}],
+            "includes": {
+                "tweets": [{"id": "900", "author_id": "a9", "text": "orig", "attachments": {"media_keys": ["3_missing", "3_ok"]}}],
+                "media": [{"media_key": "3_ok", "type": "photo", "url": "https://x/img-ok.jpg"}],
+            },
+            "meta": {},
+        }
+
+        events = client._extract_repost_events(payload["data"], payload)
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(len(events[0].media), 1)
+        self.assertEqual(events[0].media[0].media_key, "3_ok")
 
     def test_get_new_reposts_falls_back_to_reverse_chron_timeline(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")

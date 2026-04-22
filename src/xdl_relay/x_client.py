@@ -131,9 +131,10 @@ class XClient:
             if not repost_ref:
                 continue
             media_keys = repost_ref.get("attachments", {}).get("media_keys", [])
-            media_payload = [included_media.get(media_key) for media_key in media_keys if media_key in included_media]
-
-            media = [self._convert_media(item, fallback_key=key) for item, key in zip(media_payload, media_keys)]
+            media = [
+                self._convert_media(included_media.get(media_key), fallback_key=media_key)
+                for media_key in media_keys
+            ]
             media = [m for m in media if m is not None]
 
             if media:
