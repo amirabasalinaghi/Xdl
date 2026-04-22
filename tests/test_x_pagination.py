@@ -49,6 +49,7 @@ class TestXPagination(unittest.TestCase):
         query = parse_qs(urlparse(requested_url).query)
         expansions = query.get("expansions", [""])[0]
         media_fields = query.get("media.fields", [""])[0]
+        self.assertNotIn("exclude", query)
         self.assertIn("attachments.media_keys", expansions)
         self.assertIn("referenced_tweets.id.attachments.media_keys", expansions)
         self.assertNotIn("video_info", media_fields)
