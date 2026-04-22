@@ -47,13 +47,14 @@ class TestXParsing(unittest.TestCase):
         timeline_payload = {"data": [], "meta": {}}
         with patch(
             "xdl_relay.x_client.get_json",
-            side_effect=[user_payload, timeline_payload],
+            side_effect=[user_payload, timeline_payload, {"data": [], "meta": {}}],
         ) as mock_get:
             events = client.get_new_reposts("@example_user")
 
         self.assertEqual(events, [])
         self.assertIn("/users/by/username/example_user", mock_get.call_args_list[0].args[0])
         self.assertIn("/users/123/tweets?", mock_get.call_args_list[1].args[0])
+        self.assertIn("/users/123/timelines/reverse_chronological?", mock_get.call_args_list[2].args[0])
 
     def test_get_new_reposts_accepts_reposted_reference_type(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
@@ -106,6 +107,7 @@ class TestXParsing(unittest.TestCase):
         self.assertEqual(events[0].repost_tweet_id, "205")
         self.assertEqual(events[0].original_tweet_id, "205")
         self.assertIn("/users/1/tweets?", mock_get.call_args_list[0].args[0])
+        self.assertIn("/users/1/timelines/reverse_chronological?", mock_get.call_args_list[1].args[0])
 
     def test_extract_repost_events_fetches_missing_referenced_tweet(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
@@ -145,6 +147,24 @@ class TestXParsing(unittest.TestCase):
                 client.get_new_reposts("1")
 
         self.assertIn("token can belong to a different x user", str(ctx.exception).lower())
+
+    def test_get_new_reposts_uses_reverse_timeline_when_profile_feed_has_no_reposts(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        profile_payload = {"data": [], "meta": {}}
+        reverse_timeline_payload = {
+            "data": [{"id": "777", "text": "RT", "referenced_tweets": [{"type": "retweeted", "id": "900"}]}],
+            "includes": {
+                "tweets": [{"id": "900", "author_id": "a9", "text": "orig", "attachments": {"media_keys": ["3_m"]}}],
+                "media": [{"media_key": "3_m", "type": "photo", "url": "https://x/img-m.jpg"}],
+            },
+            "meta": {},
+        }
+
+        with patch("xdl_relay.x_client.get_json", side_effect=[profile_payload, reverse_timeline_payload]):
+            events = client.get_new_reposts("1")
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].repost_tweet_id, "777")
 
 
 if __name__ == "__main__":
