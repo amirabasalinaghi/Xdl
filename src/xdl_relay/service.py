@@ -23,6 +23,9 @@ class RelayService:
             retries=settings.http_retries,
             backoff_seconds=settings.http_backoff_seconds,
             max_pages=settings.x_max_pages,
+            client_id=settings.x_client_id,
+            redirect_uri=settings.x_oauth_redirect_uri,
+            token_path=settings.x_oauth_token_path,
         )
         self.telegram_client = TelegramClient(settings.telegram_bot_token)
         self.media_dir = Path(settings.media_dir)

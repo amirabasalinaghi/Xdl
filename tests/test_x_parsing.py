@@ -9,14 +9,12 @@ class TestXParsing(unittest.TestCase):
     def test_convert_media_selects_best_variant(self) -> None:
         client = XClient()
         media = {
-            "id_str": "3_1",
+            "media_key": "3_1",
             "type": "video",
-            "video_info": {
-                "variants": [
-                    {"content_type": "video/mp4", "bitrate": 256000, "url": "http://low.mp4"},
-                    {"content_type": "video/mp4", "bitrate": 832000, "url": "http://high.mp4"},
-                ]
-            },
+            "variants": [
+                {"content_type": "video/mp4", "bitrate": 256000, "url": "http://low.mp4"},
+                {"content_type": "video/mp4", "bitrate": 832000, "url": "http://high.mp4"},
+            ],
         }
 
         converted = client._convert_media(media)
