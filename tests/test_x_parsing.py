@@ -103,6 +103,29 @@ class TestXParsing(unittest.TestCase):
 
         self.assertEqual(events, [])
 
+    def test_get_new_reposts_disables_fallback_after_403(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        empty_user_posts = {"data": [], "meta": {}}
+        forbidden = HTTPError(
+            "https://api.x.com/2/users/1/timelines/reverse_chronological",
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=None,
+        )
+
+        with patch(
+            "xdl_relay.x_client.get_json",
+            side_effect=[empty_user_posts, forbidden, empty_user_posts],
+        ) as mock_get:
+            first = client.get_new_reposts("1")
+            second = client.get_new_reposts("1")
+
+        self.assertEqual(first, [])
+        self.assertEqual(second, [])
+        self.assertEqual(mock_get.call_count, 3)
+        self.assertIn("/users/1/tweets?", mock_get.call_args_list[2].args[0])
+
 
 if __name__ == "__main__":
     unittest.main()
