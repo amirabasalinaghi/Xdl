@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+logger = logging.getLogger(__name__)
 
 
 def _retry_delay_seconds(attempt: int, base_delay: float) -> float:
@@ -39,6 +42,20 @@ def get_json(
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             last_error = exc
+            body_snippet = ""
+            try:
+                body_snippet = exc.read(400).decode("utf-8", errors="replace")
+            except Exception:
+                body_snippet = "<unreadable>"
+            logger.warning(
+                "HTTPError from GET %s attempt=%s/%s status=%s reason=%s body=%s",
+                url,
+                attempt,
+                retries,
+                exc.code,
+                exc.reason,
+                body_snippet,
+            )
             if exc.code == 429 and attempt < retries:
                 retry_after = _parse_retry_after(exc.headers.get("Retry-After"))
                 time.sleep(retry_after if retry_after is not None else _retry_delay_seconds(attempt, backoff_seconds))
@@ -49,6 +66,13 @@ def get_json(
             raise
         except URLError as exc:
             last_error = exc
+            logger.warning(
+                "URLError from GET %s attempt=%s/%s reason=%s",
+                url,
+                attempt,
+                retries,
+                exc.reason,
+            )
             if attempt < retries:
                 time.sleep(_retry_delay_seconds(attempt, backoff_seconds))
                 continue

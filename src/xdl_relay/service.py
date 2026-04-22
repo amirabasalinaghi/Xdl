@@ -50,6 +50,12 @@ class RelayService:
 
         processed = 0
         for event in reposts:
+            logger.info(
+                "Processing repost=%s original=%s media_count=%s",
+                event.repost_tweet_id,
+                event.original_tweet_id,
+                len(event.media),
+            )
             created, succeeded = self._process_event(event)
             if succeeded:
                 processed += 1
@@ -79,6 +85,13 @@ class RelayService:
 
         try:
             selected_media = self._filter_media_by_mode(event.media)
+            logger.info(
+                "Selected %s/%s media items for repost=%s mode=%s",
+                len(selected_media),
+                len(event.media),
+                event.repost_tweet_id,
+                self.settings.media_download_mode,
+            )
             if not selected_media:
                 self.db.mark_failed(
                     event.repost_tweet_id,
@@ -90,6 +103,15 @@ class RelayService:
             for idx, media in enumerate(selected_media):
                 suffix = ".mp4" if media.media_type != "photo" else ".jpg"
                 path = self.media_dir / event.repost_tweet_id / f"{idx}_{media.media_key}{suffix}"
+                logger.info(
+                    "Downloading media repost=%s idx=%s key=%s type=%s url=%s path=%s",
+                    event.repost_tweet_id,
+                    idx,
+                    media.media_key,
+                    media.media_type,
+                    media.url,
+                    path,
+                )
                 files.append(
                     download_file(
                         media.url,
@@ -98,6 +120,7 @@ class RelayService:
                         max_bytes=self.settings.max_media_bytes,
                     )
                 )
+            logger.info("Sending %s files to Telegram for repost=%s", len(files), event.repost_tweet_id)
 
             message_ids = self.telegram_client.send_media(
                 self.settings.telegram_chat_id,
