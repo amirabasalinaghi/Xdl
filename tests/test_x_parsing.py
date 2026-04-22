@@ -22,6 +22,20 @@ class TestXParsing(unittest.TestCase):
         self.assertIsNotNone(converted)
         self.assertEqual(converted.url, "http://high.mp4")
 
+
+    def test_auth_headers_decode_urlencoded_bearer_token(self) -> None:
+        client = XClient(bearer_token="AAAA%2FBBBB%3D")
+
+        headers = client._auth_headers()
+
+        self.assertEqual(headers["Authorization"], "Bearer AAAA/BBBB=")
+
+    def test_auth_headers_strip_bearer_prefix(self) -> None:
+        client = XClient(bearer_token="Bearer token-value")
+
+        headers = client._auth_headers()
+
+        self.assertEqual(headers["Authorization"], "Bearer token-value")
     def test_get_new_reposts_resolves_username_to_user_id(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
         user_payload = {"data": {"id": "123"}}
