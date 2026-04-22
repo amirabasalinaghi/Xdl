@@ -175,7 +175,7 @@ User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=${ENV_FILE}
-ExecStart=${VENV_PATH}/bin/python -m xdl_relay --webui --host ${WEBUI_HOST} --port ${WEBUI_PORT} --no-poller
+ExecStart=${VENV_PATH}/bin/python -m xdl_relay --webui --host ${WEBUI_HOST} --port ${WEBUI_PORT}
 Restart=always
 RestartSec=5
 
