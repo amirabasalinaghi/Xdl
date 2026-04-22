@@ -40,7 +40,10 @@ class TestXParsing(unittest.TestCase):
         client = XClient(max_pages=1, bearer_token="token")
         user_payload = {"data": {"id": "123"}}
         timeline_payload = {"data": [], "meta": {}}
-        with patch("xdl_relay.x_client.get_json", side_effect=[user_payload, timeline_payload]) as mock_get:
+        with patch(
+            "xdl_relay.x_client.get_json",
+            side_effect=[user_payload, timeline_payload, timeline_payload],
+        ) as mock_get:
             events = client.get_new_reposts("@example_user")
 
         self.assertEqual(events, [])
@@ -63,6 +66,25 @@ class TestXParsing(unittest.TestCase):
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].repost_tweet_id, "201")
+
+    def test_get_new_reposts_falls_back_to_reverse_chron_timeline(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        empty_user_posts = {"data": [], "meta": {}}
+        fallback_payload = {
+            "data": [{"id": "205", "text": "repost", "referenced_tweets": [{"type": "retweeted", "id": "705"}]}],
+            "includes": {
+                "tweets": [{"id": "705", "author_id": "a2", "text": "orig", "attachments": {"media_keys": ["3_5"]}}],
+                "media": [{"media_key": "3_5", "type": "photo", "url": "https://x/img5.jpg"}],
+            },
+            "meta": {},
+        }
+
+        with patch("xdl_relay.x_client.get_json", side_effect=[empty_user_posts, fallback_payload]) as mock_get:
+            events = client.get_new_reposts("1")
+
+        self.assertEqual(len(events), 1)
+        self.assertIn("/users/1/tweets?", mock_get.call_args_list[0].args[0])
+        self.assertIn("/users/1/timelines/reverse_chronological?", mock_get.call_args_list[1].args[0])
 
 
 if __name__ == "__main__":

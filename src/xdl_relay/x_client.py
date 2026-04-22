@@ -26,29 +26,29 @@ class XClient:
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
         resolved_user_id = self._resolve_user_id(user_id)
+        events = self._collect_reposts_for_endpoint(
+            f"/users/{resolved_user_id}/tweets",
+            since_id=since_id,
+        )
+        if events:
+            return events
+
+        # Fallback: X docs describe reverse chronological timeline as including
+        # reposts/retweets in feed order. Some accounts/tokens do not surface
+        # fresh repost actions consistently through /users/{id}/tweets.
+        return self._collect_reposts_for_endpoint(
+            f"/users/{resolved_user_id}/timelines/reverse_chronological",
+            since_id=since_id,
+        )
+
+    def _collect_reposts_for_endpoint(self, endpoint_path: str, since_id: str | None = None) -> list[RepostEvent]:
         events: list[RepostEvent] = []
         max_id: str | None = None
         pages = 0
 
         while pages < self.max_pages:
-            params = {
-                "max_results": "100",
-                "exclude": "replies",
-                "tweet.fields": "text,author_id,referenced_tweets,attachments",
-                "expansions": (
-                    "attachments.media_keys,"
-                    "referenced_tweets.id,"
-                    "referenced_tweets.id.author_id,"
-                    "referenced_tweets.id.attachments.media_keys"
-                ),
-                "media.fields": "type,url,variants",
-            }
-            if since_id:
-                params["since_id"] = since_id
-            if max_id:
-                params["pagination_token"] = max_id
-
-            url = f"{self.API_BASE_URL}/users/{resolved_user_id}/tweets?{urlencode(params)}"
+            params = self._timeline_params(since_id=since_id, pagination_token=max_id)
+            url = f"{self.API_BASE_URL}{endpoint_path}?{urlencode(params)}"
             payload = get_json(
                 url,
                 headers=self._auth_headers(),
@@ -60,46 +60,67 @@ class XClient:
             if not tweets:
                 break
 
-            included_tweets = {t["id"]: t for t in payload.get("includes", {}).get("tweets", []) if t.get("id")}
-            included_media = {
-                m["media_key"]: m for m in payload.get("includes", {}).get("media", []) if m.get("media_key")
-            }
-
-            for tweet in tweets:
-                references = tweet.get("referenced_tweets", [])
-                retweet_ref = next(
-                    (ref for ref in references if ref.get("type") in {"retweeted", "reposted"}),
-                    None,
-                )
-                if not retweet_ref:
-                    continue
-                repost_ref = included_tweets.get(retweet_ref.get("id", ""))
-                if not repost_ref:
-                    continue
-                media_keys = repost_ref.get("attachments", {}).get("media_keys", [])
-                media_payload = [included_media.get(media_key) for media_key in media_keys if media_key in included_media]
-
-                media = [self._convert_media(item, fallback_key=key) for item, key in zip(media_payload, media_keys)]
-                media = [m for m in media if m is not None]
-
-                if media:
-                    events.append(
-                        RepostEvent(
-                            repost_tweet_id=tweet["id"],
-                            original_tweet_id=repost_ref.get("id", ""),
-                            original_author_id=repost_ref.get("author_id", "unknown"),
-                            repost_text=tweet.get("text", ""),
-                            original_text=repost_ref.get("text", ""),
-                            media=media,
-                        )
-                    )
-
+            events.extend(self._extract_repost_events(tweets, payload))
             pages += 1
             max_id = payload.get("meta", {}).get("next_token")
             if not max_id:
                 break
 
         return sorted(events, key=lambda e: int(e.repost_tweet_id))
+
+    def _timeline_params(self, since_id: str | None = None, pagination_token: str | None = None) -> dict[str, str]:
+        params = {
+            "max_results": "100",
+            "exclude": "replies",
+            "tweet.fields": "text,author_id,referenced_tweets,attachments",
+            "expansions": (
+                "attachments.media_keys,"
+                "referenced_tweets.id,"
+                "referenced_tweets.id.author_id,"
+                "referenced_tweets.id.attachments.media_keys"
+            ),
+            "media.fields": "type,url,variants",
+        }
+        if since_id:
+            params["since_id"] = since_id
+        if pagination_token:
+            params["pagination_token"] = pagination_token
+        return params
+
+    def _extract_repost_events(self, tweets: list[dict], payload: dict) -> list[RepostEvent]:
+        events: list[RepostEvent] = []
+        included_tweets = {t["id"]: t for t in payload.get("includes", {}).get("tweets", []) if t.get("id")}
+        included_media = {m["media_key"]: m for m in payload.get("includes", {}).get("media", []) if m.get("media_key")}
+
+        for tweet in tweets:
+            references = tweet.get("referenced_tweets", [])
+            retweet_ref = next(
+                (ref for ref in references if ref.get("type") in {"retweeted", "reposted"}),
+                None,
+            )
+            if not retweet_ref:
+                continue
+            repost_ref = included_tweets.get(retweet_ref.get("id", ""))
+            if not repost_ref:
+                continue
+            media_keys = repost_ref.get("attachments", {}).get("media_keys", [])
+            media_payload = [included_media.get(media_key) for media_key in media_keys if media_key in included_media]
+
+            media = [self._convert_media(item, fallback_key=key) for item, key in zip(media_payload, media_keys)]
+            media = [m for m in media if m is not None]
+
+            if media:
+                events.append(
+                    RepostEvent(
+                        repost_tweet_id=tweet["id"],
+                        original_tweet_id=repost_ref.get("id", ""),
+                        original_author_id=repost_ref.get("author_id", "unknown"),
+                        repost_text=tweet.get("text", ""),
+                        original_text=repost_ref.get("text", ""),
+                        media=media,
+                    )
+                )
+        return events
 
     def _resolve_user_id(self, user_id: str) -> str:
         normalized = user_id.strip()
