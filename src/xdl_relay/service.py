@@ -6,6 +6,7 @@ from pathlib import Path
 
 from xdl_relay.config import Settings
 from xdl_relay.db import RelayDB
+from xdl_relay.enhancements import build_repost_permalink, split_caption_chunks
 from xdl_relay.models import MediaItem, RepostEvent
 from xdl_relay.storage import download_file
 from xdl_relay.telegram_client import TelegramClient
@@ -179,11 +180,12 @@ class RelayService:
         safe_title = " ".join(title.split())
         if len(safe_title) > 900:
             safe_title = f"{safe_title[:897]}..."
-        return (
+        caption = (
             f"{safe_title}\n\n"
-            f"Original: https://x.com/i/web/status/{event.original_tweet_id}\n"
-            f"Repost: https://x.com/i/web/status/{event.repost_tweet_id}"
+            f"Original: {build_repost_permalink(event.original_tweet_id)}\n"
+            f"Repost: {build_repost_permalink(event.repost_tweet_id)}"
         )
+        return split_caption_chunks(caption, max_len=1024)[0]
 
     def _notify_failure(self, repost_tweet_id: str, error: Exception) -> None:
         try:

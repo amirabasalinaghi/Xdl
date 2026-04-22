@@ -4,6 +4,7 @@ import logging
 from urllib.error import HTTPError
 from urllib.parse import unquote, urlencode
 
+from xdl_relay.enhancements import extract_best_media_variant
 from xdl_relay.http_utils import get_json
 from xdl_relay.models import MediaItem, RepostEvent
 
@@ -200,14 +201,10 @@ class XClient:
         if media_type == "photo":
             url = media_payload.get("url")
         else:
-            variants = media_payload.get("video_info", {}).get("variants", [])
-            if not variants:
-                variants = media_payload.get("variants", [])
-            mp4_variants = [v for v in variants if v.get("content_type") == "video/mp4" and v.get("url")]
-            if not mp4_variants:
+            best_variant = extract_best_media_variant(media_payload)
+            if not best_variant:
                 return None
-            mp4_variants.sort(key=lambda v: v.get("bitrate", v.get("bit_rate", 0)), reverse=True)
-            url = mp4_variants[0]["url"]
+            url = best_variant.get("url")
 
         if not url or not media_key:
             return None

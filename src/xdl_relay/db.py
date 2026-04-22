@@ -42,6 +42,14 @@ class RelayDB:
                     telegram_message_ids TEXT,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS media_hashes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    repost_tweet_id TEXT NOT NULL,
+                    media_hash TEXT NOT NULL UNIQUE,
+                    file_path TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
                 """
             )
 
@@ -85,6 +93,54 @@ class RelayDB:
                 "UPDATE repost_events SET status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE repost_tweet_id = ?",
                 (error_message[:4000], repost_tweet_id),
             )
+
+
+    def media_hash_exists(self, media_hash: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM media_hashes WHERE media_hash = ? LIMIT 1",
+                (media_hash,),
+            ).fetchone()
+        return bool(row)
+
+    def record_media_hash(self, repost_id: str, media_hash: str, file_path: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO media_hashes (repost_tweet_id, media_hash, file_path)
+                VALUES (?, ?, ?)
+                """,
+                (repost_id, media_hash, file_path),
+            )
+
+    def list_stale_pending_events(self, stale_after_minutes: int) -> list[dict[str, str | None]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT repost_tweet_id, original_tweet_id, status, error_message, created_at, updated_at
+                FROM repost_events
+                WHERE status = 'pending'
+                  AND updated_at <= datetime('now', ?)
+                ORDER BY updated_at ASC
+                """,
+                (f"-{max(1, stale_after_minutes)} minutes",),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def requeue_events(self, repost_ids: list[str]) -> int:
+        if not repost_ids:
+            return 0
+        placeholders = ",".join("?" for _ in repost_ids)
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"""
+                UPDATE repost_events
+                SET status = 'pending', error_message = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE repost_tweet_id IN ({placeholders})
+                """,
+                repost_ids,
+            )
+        return int(cur.rowcount or 0)
 
     def get_overview(self) -> dict[str, int | str | None]:
         with self._connect() as conn:
