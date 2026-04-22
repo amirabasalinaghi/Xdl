@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from xdl_relay.x_client import XClient
 
@@ -85,6 +86,22 @@ class TestXParsing(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertIn("/users/1/tweets?", mock_get.call_args_list[0].args[0])
         self.assertIn("/users/1/timelines/reverse_chronological?", mock_get.call_args_list[1].args[0])
+
+    def test_get_new_reposts_ignores_403_from_fallback_timeline(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        empty_user_posts = {"data": [], "meta": {}}
+        forbidden = HTTPError(
+            "https://api.x.com/2/users/1/timelines/reverse_chronological",
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=None,
+        )
+
+        with patch("xdl_relay.x_client.get_json", side_effect=[empty_user_posts, forbidden]):
+            events = client.get_new_reposts("1")
+
+        self.assertEqual(events, [])
 
 
 if __name__ == "__main__":
