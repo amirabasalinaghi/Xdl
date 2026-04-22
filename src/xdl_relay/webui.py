@@ -686,6 +686,12 @@ def _settings_payload(settings: Settings) -> dict[str, str]:
         "x_bearer_token": settings.x_bearer_token,
         "telegram_bot_token": settings.telegram_bot_token,
         "telegram_chat_id": settings.telegram_chat_id,
+        "poll_interval_seconds": settings.poll_interval_seconds,
+        "http_timeout_seconds": settings.http_timeout_seconds,
+        "http_retries": settings.http_retries,
+        "http_backoff_seconds": settings.http_backoff_seconds,
+        "max_media_bytes": settings.max_media_bytes,
+        "x_max_pages": settings.x_max_pages,
         "media_download_mode": settings.media_download_mode,
     }
 

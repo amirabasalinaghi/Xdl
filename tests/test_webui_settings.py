@@ -100,6 +100,12 @@ class TestWebUISettings(unittest.TestCase):
         self.assertEqual(payload["telegram_bot_token"], "bot")
         self.assertEqual(payload["telegram_chat_id"], "-100")
         self.assertEqual(payload["media_download_mode"], "video")
+        self.assertEqual(payload["poll_interval_seconds"], 15)
+        self.assertEqual(payload["http_timeout_seconds"], 60)
+        self.assertEqual(payload["http_retries"], 5)
+        self.assertEqual(payload["http_backoff_seconds"], 2.0)
+        self.assertEqual(payload["max_media_bytes"], 200 * 1024 * 1024)
+        self.assertEqual(payload["x_max_pages"], 64)
         self.assertEqual(payload["X_USER_ID"], "123")
 
 
