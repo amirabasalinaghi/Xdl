@@ -7,7 +7,13 @@ import unittest
 from unittest import mock
 
 from xdl_relay.config import Settings
-from xdl_relay.webui import InMemoryLogHandler, _env_file_path, _normalize_download_mode, _write_env_file
+from xdl_relay.webui import (
+    InMemoryLogHandler,
+    _env_file_path,
+    _normalize_download_mode,
+    _settings_payload,
+    _write_env_file,
+)
 
 
 class TestWebUISettings(unittest.TestCase):
@@ -55,6 +61,24 @@ class TestWebUISettings(unittest.TestCase):
                     )
                 )
             self.assertTrue(os.path.exists(env_path))
+
+    def test_settings_payload_contains_dashboard_fields(self) -> None:
+        settings = Settings(
+            x_user_id="123",
+            x_bearer_token="bearer",
+            telegram_bot_token="bot",
+            telegram_chat_id="-100",
+            media_download_mode="video",
+        )
+
+        payload = _settings_payload(settings)
+
+        self.assertEqual(payload["x_user_id"], "123")
+        self.assertEqual(payload["x_bearer_token"], "bearer")
+        self.assertEqual(payload["telegram_bot_token"], "bot")
+        self.assertEqual(payload["telegram_chat_id"], "-100")
+        self.assertEqual(payload["media_download_mode"], "video")
+        self.assertEqual(payload["X_USER_ID"], "123")
 
 
 if __name__ == "__main__":
