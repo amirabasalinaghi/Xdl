@@ -29,44 +29,14 @@ class XClient:
         self.max_pages = max_pages
         self.page_size = min(100, max(5, page_size))
         self.bearer_token = bearer_token
-        self._reverse_chronological_supported: bool | None = None
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
         resolved_user_id = self._resolve_user_id(user_id)
         logger.info("Fetching reposts for user_id=%s resolved_user_id=%s since_id=%s", user_id, resolved_user_id, since_id)
-        events = self._collect_reposts_for_endpoint(
+        return self._collect_reposts_for_endpoint(
             f"/users/{resolved_user_id}/tweets",
             since_id=since_id,
         )
-
-        # Some accounts/tokens do not surface fresh repost actions consistently
-        # through /users/{id}/tweets. Query reverse chronological timeline as an
-        # additional source and merge results by repost tweet id.
-        if self._reverse_chronological_supported is False:
-            logger.debug("Reverse chronological fallback disabled from previous HTTP 403 response.")
-            return events
-
-        try:
-            fallback_events = self._collect_reposts_for_endpoint(
-                f"/users/{resolved_user_id}/timelines/reverse_chronological",
-                since_id=since_id,
-            )
-            self._reverse_chronological_supported = True
-            merged: dict[str, RepostEvent] = {event.repost_tweet_id: event for event in events}
-            merged.update({event.repost_tweet_id: event for event in fallback_events})
-            return sorted(merged.values(), key=lambda e: int(e.repost_tweet_id))
-        except HTTPError as exc:
-            # Application-only bearer tokens are rejected for this endpoint.
-            # Keep polling functional by treating this fallback as optional.
-            if exc.code == 403:
-                self._reverse_chronological_supported = False
-                logger.warning(
-                    "Skipping reverse chronological fallback for user_id=%s due to HTTP 403. "
-                    "Disabling this fallback for subsequent polls.",
-                    resolved_user_id,
-                )
-                return events
-            raise
 
     def _collect_reposts_for_endpoint(self, endpoint_path: str, since_id: str | None = None) -> list[RepostEvent]:
         events: list[RepostEvent] = []
@@ -145,22 +115,26 @@ class XClient:
                 (ref for ref in references if ref.get("type") in {"retweeted", "reposted"}),
                 None,
             )
-            if not retweet_ref:
-                continue
-            referenced_id = retweet_ref.get("id", "")
-            repost_ref = included_tweets.get(referenced_id)
-            referenced_media_map = included_media
-            if not repost_ref and referenced_id:
-                if referenced_id not in fetched_referenced_tweets:
-                    fetched_referenced_tweets[referenced_id] = self._fetch_tweet_with_media(referenced_id)
-                fetched_tweet, fetched_media = fetched_referenced_tweets[referenced_id]
-                repost_ref = fetched_tweet
-                referenced_media_map = fetched_media
-            if not repost_ref:
-                continue
-            media_keys = repost_ref.get("attachments", {}).get("media_keys", [])
+            is_repost = retweet_ref is not None
+            if is_repost:
+                referenced_id = retweet_ref.get("id", "")
+                source_tweet = included_tweets.get(referenced_id)
+                source_media_map = included_media
+                if not source_tweet and referenced_id:
+                    if referenced_id not in fetched_referenced_tweets:
+                        fetched_referenced_tweets[referenced_id] = self._fetch_tweet_with_media(referenced_id)
+                    fetched_tweet, fetched_media = fetched_referenced_tweets[referenced_id]
+                    source_tweet = fetched_tweet
+                    source_media_map = fetched_media
+                if not source_tweet:
+                    continue
+            else:
+                source_tweet = tweet
+                source_media_map = included_media
+
+            media_keys = source_tweet.get("attachments", {}).get("media_keys", [])
             media = [
-                self._convert_media(referenced_media_map.get(media_key), fallback_key=media_key)
+                self._convert_media(source_media_map.get(media_key), fallback_key=media_key)
                 for media_key in media_keys
             ]
             media = [m for m in media if m is not None]
@@ -169,10 +143,10 @@ class XClient:
                 events.append(
                     RepostEvent(
                         repost_tweet_id=tweet["id"],
-                        original_tweet_id=repost_ref.get("id", ""),
-                        original_author_id=repost_ref.get("author_id", "unknown"),
+                        original_tweet_id=source_tweet.get("id", ""),
+                        original_author_id=source_tweet.get("author_id", "unknown"),
                         repost_text=tweet.get("text", ""),
-                        original_text=repost_ref.get("text", ""),
+                        original_text=source_tweet.get("text", ""),
                         media=media,
                     )
                 )

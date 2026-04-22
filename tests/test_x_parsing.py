@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import unittest
 from unittest.mock import patch
-from urllib.error import HTTPError
 
 from xdl_relay.x_client import XClient
 
@@ -47,7 +46,7 @@ class TestXParsing(unittest.TestCase):
         timeline_payload = {"data": [], "meta": {}}
         with patch(
             "xdl_relay.x_client.get_json",
-            side_effect=[user_payload, timeline_payload, timeline_payload],
+            side_effect=[user_payload, timeline_payload],
         ) as mock_get:
             events = client.get_new_reposts("@example_user")
 
@@ -88,63 +87,24 @@ class TestXParsing(unittest.TestCase):
         self.assertEqual(len(events[0].media), 1)
         self.assertEqual(events[0].media[0].media_key, "3_ok")
 
-    def test_get_new_reposts_falls_back_to_reverse_chron_timeline(self) -> None:
+    def test_get_new_reposts_includes_profile_post_media(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
-        empty_user_posts = {"data": [], "meta": {}}
-        fallback_payload = {
-            "data": [{"id": "205", "text": "repost", "referenced_tweets": [{"type": "retweeted", "id": "705"}]}],
+        profile_payload = {
+            "data": [{"id": "205", "text": "my post", "author_id": "1", "attachments": {"media_keys": ["3_5"]}}],
             "includes": {
-                "tweets": [{"id": "705", "author_id": "a2", "text": "orig", "attachments": {"media_keys": ["3_5"]}}],
+                "tweets": [],
                 "media": [{"media_key": "3_5", "type": "photo", "url": "https://x/img5.jpg"}],
             },
             "meta": {},
         }
 
-        with patch("xdl_relay.x_client.get_json", side_effect=[empty_user_posts, fallback_payload]) as mock_get:
+        with patch("xdl_relay.x_client.get_json", return_value=profile_payload) as mock_get:
             events = client.get_new_reposts("1")
 
         self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].repost_tweet_id, "205")
+        self.assertEqual(events[0].original_tweet_id, "205")
         self.assertIn("/users/1/tweets?", mock_get.call_args_list[0].args[0])
-        self.assertIn("/users/1/timelines/reverse_chronological?", mock_get.call_args_list[1].args[0])
-
-    def test_get_new_reposts_ignores_403_from_fallback_timeline(self) -> None:
-        client = XClient(max_pages=1, bearer_token="token")
-        empty_user_posts = {"data": [], "meta": {}}
-        forbidden = HTTPError(
-            "https://api.x.com/2/users/1/timelines/reverse_chronological",
-            403,
-            "Forbidden",
-            hdrs=None,
-            fp=None,
-        )
-
-        with patch("xdl_relay.x_client.get_json", side_effect=[empty_user_posts, forbidden]):
-            events = client.get_new_reposts("1")
-
-        self.assertEqual(events, [])
-
-    def test_get_new_reposts_disables_fallback_after_403(self) -> None:
-        client = XClient(max_pages=1, bearer_token="token")
-        empty_user_posts = {"data": [], "meta": {}}
-        forbidden = HTTPError(
-            "https://api.x.com/2/users/1/timelines/reverse_chronological",
-            403,
-            "Forbidden",
-            hdrs=None,
-            fp=None,
-        )
-
-        with patch(
-            "xdl_relay.x_client.get_json",
-            side_effect=[empty_user_posts, forbidden, empty_user_posts],
-        ) as mock_get:
-            first = client.get_new_reposts("1")
-            second = client.get_new_reposts("1")
-
-        self.assertEqual(first, [])
-        self.assertEqual(second, [])
-        self.assertEqual(mock_get.call_count, 3)
-        self.assertIn("/users/1/tweets?", mock_get.call_args_list[2].args[0])
 
     def test_extract_repost_events_fetches_missing_referenced_tweet(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
