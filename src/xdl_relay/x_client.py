@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from urllib.error import HTTPError
-from urllib.parse import urlencode
+from urllib.parse import unquote, urlencode
 
 from xdl_relay.http_utils import get_json
 from xdl_relay.models import MediaItem, RepostEvent
@@ -125,10 +125,19 @@ class XClient:
     def _auth_headers(self) -> dict[str, str]:
         if not self.bearer_token:
             raise RuntimeError("X bearer token is missing. Set X_BEARER_TOKEN.")
+        token = self._normalize_bearer_token(self.bearer_token)
+        if not token:
+            raise RuntimeError("X bearer token is missing. Set X_BEARER_TOKEN.")
         return {
-            "Authorization": f"Bearer {self.bearer_token}",
+            "Authorization": f"Bearer {token}",
             "User-Agent": "Mozilla/5.0",
         }
+
+    def _normalize_bearer_token(self, token: str) -> str:
+        normalized = unquote((token or "").strip())
+        if normalized.lower().startswith("bearer "):
+            normalized = normalized[7:].strip()
+        return normalized
 
     def _convert_media(self, media_payload: dict | None, fallback_key: str = "") -> MediaItem | None:
         if not media_payload:
