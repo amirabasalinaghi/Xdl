@@ -7,11 +7,9 @@ import os
 @dataclass(frozen=True)
 class Settings:
     x_user_id: str
-    x_client_id: str
+    x_bearer_token: str
     telegram_bot_token: str
     telegram_chat_id: str
-    x_oauth_redirect_uri: str = "https://localhost/callback"
-    x_oauth_token_path: str = "x_oauth_token.json"
     poll_interval_seconds: int = 30
     db_path: str = "relay.db"
     media_dir: str = "media"
@@ -28,7 +26,7 @@ class Settings:
     def from_env() -> "Settings":
         required = {
             "X_USER_ID": os.getenv("X_USER_ID", ""),
-            "X_CLIENT_ID": os.getenv("X_CLIENT_ID", ""),
+            "X_BEARER_TOKEN": os.getenv("X_BEARER_TOKEN", ""),
             "TELEGRAM_BOT_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN", ""),
             "TELEGRAM_CHAT_ID": os.getenv("TELEGRAM_CHAT_ID", ""),
         }
@@ -38,11 +36,9 @@ class Settings:
 
         return Settings(
             x_user_id=required["X_USER_ID"],
-            x_client_id=required["X_CLIENT_ID"],
+            x_bearer_token=required["X_BEARER_TOKEN"],
             telegram_bot_token=required["TELEGRAM_BOT_TOKEN"],
             telegram_chat_id=required["TELEGRAM_CHAT_ID"],
-            x_oauth_redirect_uri=os.getenv("X_OAUTH_REDIRECT_URI", "https://localhost/callback"),
-            x_oauth_token_path=os.getenv("X_OAUTH_TOKEN_PATH", "x_oauth_token.json"),
             poll_interval_seconds=int(os.getenv("POLL_INTERVAL_SECONDS", "30")),
             db_path=os.getenv("DB_PATH", "relay.db"),
             media_dir=os.getenv("MEDIA_DIR", "media"),
@@ -61,11 +57,9 @@ class Settings:
     def to_env_dict(self) -> dict[str, str]:
         return {
             "X_USER_ID": self.x_user_id,
-            "X_CLIENT_ID": self.x_client_id,
+            "X_BEARER_TOKEN": self.x_bearer_token,
             "TELEGRAM_BOT_TOKEN": self.telegram_bot_token,
             "TELEGRAM_CHAT_ID": self.telegram_chat_id,
-            "X_OAUTH_REDIRECT_URI": self.x_oauth_redirect_uri,
-            "X_OAUTH_TOKEN_PATH": self.x_oauth_token_path,
             "POLL_INTERVAL_SECONDS": str(self.poll_interval_seconds),
             "DB_PATH": self.db_path,
             "MEDIA_DIR": self.media_dir,

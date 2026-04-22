@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from urllib.parse import parse_qs, urlparse, urlencode
+from urllib.parse import urlencode
 
 from xdl_relay.http_utils import get_json
 from xdl_relay.models import MediaItem, RepostEvent
-from xdl_relay.x_auth import OAuthTokenStore, XOAuthPKCE
 
 
 class XClient:
@@ -16,35 +15,13 @@ class XClient:
         retries: int = 3,
         backoff_seconds: float = 1.0,
         max_pages: int = 5,
-        client_id: str = "",
-        redirect_uri: str = "https://localhost/callback",
-        token_path: str = "x_oauth_token.json",
+        bearer_token: str = "",
     ) -> None:
         self.timeout = timeout
         self.retries = retries
         self.backoff_seconds = backoff_seconds
         self.max_pages = max_pages
-        self.client_id = client_id
-        self.redirect_uri = redirect_uri
-        self.token_store = OAuthTokenStore(token_path)
-        self.oauth = XOAuthPKCE(client_id=client_id, redirect_uri=redirect_uri)
-
-    def interactive_login(self) -> None:
-        auth_url, expected_state, verifier = self.oauth.create_authorization_request()
-        print("\nOpen this URL in your browser and approve access:\n")
-        print(auth_url)
-        print("\nAfter approval, paste the full redirected URL here.")
-        callback_url = input("Redirect URL: ").strip()
-        parsed = urlparse(callback_url)
-        query = parse_qs(parsed.query)
-        code = query.get("code", [None])[0]
-        state = query.get("state", [None])[0]
-        if not code:
-            raise RuntimeError("Login failed: callback URL did not include an authorization code.")
-        if state != expected_state:
-            raise RuntimeError("Login failed: OAuth state mismatch.")
-        token = self.oauth.exchange_code(code=code, code_verifier=verifier)
-        self.token_store.save(token)
+        self.bearer_token = bearer_token
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
         events: list[RepostEvent] = []
@@ -67,7 +44,7 @@ class XClient:
             url = f"{self.API_BASE_URL}/users/{user_id}/tweets?{urlencode(params)}"
             payload = get_json(
                 url,
-                headers=self._oauth_headers(),
+                headers=self._auth_headers(),
                 timeout=self.timeout,
                 retries=self.retries,
                 backoff_seconds=self.backoff_seconds,
@@ -114,15 +91,11 @@ class XClient:
 
         return sorted(events, key=lambda e: int(e.repost_tweet_id))
 
-    def _oauth_headers(self) -> dict[str, str]:
-        token = self.token_store.load()
-        if token is None:
-            raise RuntimeError("X user token is missing. Run login flow first.")
-        if token.is_expired():
-            token = self.oauth.refresh(token.refresh_token)
-            self.token_store.save(token)
+    def _auth_headers(self) -> dict[str, str]:
+        if not self.bearer_token:
+            raise RuntimeError("X bearer token is missing. Set X_BEARER_TOKEN.")
         return {
-            "Authorization": f"Bearer {token.access_token}",
+            "Authorization": f"Bearer {self.bearer_token}",
             "User-Agent": "Mozilla/5.0",
         }
 

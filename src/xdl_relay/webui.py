@@ -102,7 +102,7 @@ HTML_PAGE = """<!doctype html>
       <h3>Configuration</h3>
       <div class=\"toolbar\">
         <input id=\"x_user_id\" placeholder=\"X_USER_ID\" />
-        <input id=\"x_client_id\" placeholder=\"X_CLIENT_ID\" />
+        <input id=\"x_bearer_token\" placeholder=\"X_BEARER_TOKEN\" />
         <input id=\"telegram_bot_token\" placeholder=\"TELEGRAM_BOT_TOKEN\" />
         <input id=\"telegram_chat_id\" placeholder=\"TELEGRAM_CHAT_ID\" />
         <select id=\"media_download_mode\">
@@ -204,7 +204,7 @@ HTML_PAGE = """<!doctype html>
     async function loadSettings() {
       const s = await getJson('/api/settings');
       document.getElementById('x_user_id').value = s.x_user_id || '';
-      document.getElementById('x_client_id').value = s.x_client_id || '';
+      document.getElementById('x_bearer_token').value = s.x_bearer_token || '';
       document.getElementById('telegram_bot_token').value = s.telegram_bot_token || '';
       document.getElementById('telegram_chat_id').value = s.telegram_chat_id || '';
       document.getElementById('media_download_mode').value = s.media_download_mode || 'both';
@@ -213,7 +213,7 @@ HTML_PAGE = """<!doctype html>
     async function saveSettings() {
       const payload = {
         x_user_id: document.getElementById('x_user_id').value.trim(),
-        x_client_id: document.getElementById('x_client_id').value.trim(),
+        x_bearer_token: document.getElementById('x_bearer_token').value.trim(),
         telegram_bot_token: document.getElementById('telegram_bot_token').value.trim(),
         telegram_chat_id: document.getElementById('telegram_chat_id').value.trim(),
         media_download_mode: document.getElementById('media_download_mode').value
@@ -362,11 +362,9 @@ class DashboardServer:
                     data = json.loads(raw.decode("utf-8") or "{}")
                     updated = Settings(
                         x_user_id=data.get("x_user_id") or relay_service.settings.x_user_id,
-                        x_client_id=data.get("x_client_id") or relay_service.settings.x_client_id,
+                        x_bearer_token=data.get("x_bearer_token") or relay_service.settings.x_bearer_token,
                         telegram_bot_token=data.get("telegram_bot_token") or relay_service.settings.telegram_bot_token,
                         telegram_chat_id=data.get("telegram_chat_id") or relay_service.settings.telegram_chat_id,
-                        x_oauth_redirect_uri=relay_service.settings.x_oauth_redirect_uri,
-                        x_oauth_token_path=relay_service.settings.x_oauth_token_path,
                         poll_interval_seconds=relay_service.settings.poll_interval_seconds,
                         db_path=relay_service.settings.db_path,
                         media_dir=relay_service.settings.media_dir,
