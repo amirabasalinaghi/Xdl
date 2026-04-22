@@ -79,13 +79,23 @@ HTML_PAGE = """<!doctype html>
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
   <title>XDL Relay Dashboard</title>
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: dark;
+      --bg: #050b16;
+      --panel: #0f172a;
+      --panel-2: #131f38;
+      --border: rgba(148, 163, 184, 0.2);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --brand: #0ea5e9;
+      --radius: 12px;
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background: radial-gradient(circle at top, #1e293b, #020617 42%);
-      color: #e2e8f0;
+      background: radial-gradient(circle at top, #16223a, var(--bg) 45%);
+      color: var(--text);
       min-height: 100vh;
     }
     .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
@@ -95,7 +105,7 @@ HTML_PAGE = """<!doctype html>
       padding: 10px 0; backdrop-filter: blur(10px);
     }
     h1 { margin: 0; font-size: 1.6rem; }
-    .muted { color: #94a3b8; }
+    .muted { color: var(--muted); }
     .subtitle { margin-top: 4px; font-size: 0.86rem; }
     .grid {
       display: grid;
@@ -104,9 +114,9 @@ HTML_PAGE = """<!doctype html>
       margin-bottom: 16px;
     }
     .card {
-      background: rgba(15, 23, 42, 0.78);
-      border: 1px solid rgba(148, 163, 184, 0.18);
-      border-radius: 14px;
+      background: linear-gradient(160deg, rgba(15, 23, 42, 0.95), rgba(19, 31, 56, 0.92));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       padding: 14px;
       backdrop-filter: blur(4px);
       box-shadow: 0 16px 30px rgba(2, 6, 23, 0.25);
@@ -120,17 +130,17 @@ HTML_PAGE = """<!doctype html>
       margin-bottom: 12px;
     }
     .field { display: flex; flex-direction: column; gap: 6px; }
-    .help { font-size: 0.76rem; color: #94a3b8; line-height: 1.35; }
+    .help { font-size: 0.76rem; color: var(--muted); line-height: 1.35; }
     label { font-size: 0.82rem; color: #cbd5e1; }
     input, select, button {
       border-radius: 10px;
       border: 1px solid #334155;
-      background: #0f172a;
-      color: #e2e8f0;
+      background: rgba(2, 6, 23, 0.65);
+      color: var(--text);
       padding: 9px 12px;
     }
     button {
-      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      background: linear-gradient(135deg, var(--brand), #0284c7);
       border: none;
       cursor: pointer;
       font-weight: 600;
@@ -140,7 +150,7 @@ HTML_PAGE = """<!doctype html>
     button:disabled { opacity: 0.7; cursor: not-allowed; }
     button:hover { filter: brightness(1.1); }
     .btn-secondary {
-      background: #1e293b;
+      background: #17233a;
       border: 1px solid #334155;
     }
     table { width: 100%; border-collapse: collapse; min-width: 620px; }
@@ -167,7 +177,7 @@ HTML_PAGE = """<!doctype html>
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.84rem; }
     .pill {
       display: inline-flex; align-items: center; gap: 6px;
-      border: 1px solid rgba(148, 163, 184, .25);
+      border: 1px solid var(--border);
       background: rgba(15, 23, 42, .8);
       color: #cbd5e1; border-radius: 999px;
       padding: 6px 10px; font-size: .78rem;
@@ -179,7 +189,6 @@ HTML_PAGE = """<!doctype html>
       background: #0ea5e9; color: #00111f; padding: 8px 12px; border-radius: 8px; font-weight: 700;
     }
     a.skip-link:focus { left: 8px; }
-    .container { max-width: 1280px; }
     .card h3 { margin-top: 0; }
     .card:hover { border-color: rgba(56, 189, 248, 0.4); }
     input::placeholder { color: #64748b; }
@@ -198,16 +207,6 @@ HTML_PAGE = """<!doctype html>
     .toast { background: #0b1222; border: 1px solid #334155; border-left: 4px solid #0ea5e9; border-radius: 10px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
     .toast.error { border-left-color: #ef4444; }
     .toast.success { border-left-color: #22c55e; }
-    .loading {
-      position: fixed; inset: 0; background: rgba(2, 6, 23, 0.4); backdrop-filter: blur(2px);
-      display: none; align-items: center; justify-content: center; z-index: 40;
-    }
-    .loading.show { display: flex; }
-    .spinner {
-      width: 44px; height: 44px; border-radius: 50%; border: 4px solid rgba(148, 163, 184, 0.2); border-top-color: #38bdf8;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
     .copy-btn { margin-left: 6px; font-size:.72rem; padding: 2px 6px; border-radius: 6px; background:#1e293b; border:1px solid #334155; }
     .empty-state { text-align:center; color:#94a3b8; padding:14px; }
     .table-scroll {
@@ -220,7 +219,6 @@ HTML_PAGE = """<!doctype html>
 </head>
 <body>
   <a href=\"#main\" class=\"skip-link\">Skip to main content</a>
-  <div id=\"loading\" class=\"loading\" aria-hidden=\"true\"><div class=\"spinner\" aria-label=\"Loading\"></div></div>
   <div class=\"toast-wrap\" id=\"toasts\" aria-live=\"polite\"></div>
   <div class=\"container\" id=\"main\">
     <div class=\"header\">
@@ -382,16 +380,9 @@ HTML_PAGE = """<!doctype html>
   </div>
 
   <script>
-    let inFlightRequests = 0;
     let autoRefreshEnabled = true;
     let countdown = 10;
     let searchDebounceTimer = null;
-
-    function setLoading(isLoading) {
-      const el = document.getElementById('loading');
-      el.classList.toggle('show', !!isLoading);
-      el.setAttribute('aria-hidden', isLoading ? 'false' : 'true');
-    }
 
     function toast(message, type = 'info') {
       const host = document.getElementById('toasts');
@@ -410,16 +401,9 @@ HTML_PAGE = """<!doctype html>
     }
 
     async function getJson(url, options = {}) {
-      inFlightRequests += 1;
-      setLoading(inFlightRequests > 0);
-      try {
-        const res = await fetch(url, options);
-        if (!res.ok) throw new Error('Request failed: ' + res.status);
-        return await res.json();
-      } finally {
-        inFlightRequests = Math.max(0, inFlightRequests - 1);
-        setLoading(inFlightRequests > 0);
-      }
+      const res = await fetch(url, options);
+      if (!res.ok) throw new Error('Request failed: ' + res.status);
+      return await res.json();
     }
 
     function card(label, value) {
