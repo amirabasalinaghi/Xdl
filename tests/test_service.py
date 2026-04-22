@@ -18,6 +18,16 @@ class _FakeXClient:
         return self.events
 
 
+class _CursorAwareFakeXClient:
+    def __init__(self, responses: dict[str | None, list[RepostEvent]]) -> None:
+        self.responses = responses
+        self.calls: list[str | None] = []
+
+    def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
+        self.calls.append(since_id)
+        return self.responses.get(since_id, [])
+
+
 class _FailingTelegramClient:
     def __init__(self) -> None:
         self.messages: list[str] = []
@@ -157,6 +167,37 @@ class TestServiceBehavior(unittest.TestCase):
             self.assertEqual(result["new_processed"], 0)
             status = service.db.list_events(limit=10, status=None, text_query="200")[0]["status"]
             self.assertEqual(status, "sent")
+
+    def test_process_once_runs_catch_up_scan_when_since_id_returns_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            service.db.set_last_seen_tweet_id("200")
+            event = RepostEvent(
+                repost_tweet_id="205",
+                original_tweet_id="100",
+                original_author_id="abc",
+                repost_text="RT: something cool",
+                original_text="something cool",
+                media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
+            )
+            fake_x_client = _CursorAwareFakeXClient({"200": [], None: [event]})
+            service.x_client = fake_x_client
+            service.telegram_client = _SuccessfulTelegramClient()
+
+            with mock.patch("xdl_relay.service.download_file", return_value=Path(tmp) / "a.jpg"):
+                processed = service.process_once()
+
+            self.assertEqual(processed, 1)
+            self.assertEqual(fake_x_client.calls, ["200", None])
+            self.assertEqual(service.db.get_last_seen_tweet_id(), "205")
 
 
 if __name__ == "__main__":

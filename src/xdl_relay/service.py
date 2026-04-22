@@ -46,6 +46,13 @@ class RelayService:
     def process_once(self) -> int:
         since_id = self.db.get_last_seen_tweet_id()
         reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id)
+        if not reposts and since_id:
+            logger.info(
+                "No reposts returned for since_id=%s; running catch-up scan without cursor to avoid missing recent reposts.",
+                since_id,
+            )
+            recent_reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
+            reposts = self._filter_reposts_newer_than_cursor(recent_reposts, since_id)
         if not reposts:
             return 0
 
@@ -67,6 +74,21 @@ class RelayService:
             self.db.set_last_seen_tweet_id(event.repost_tweet_id)
 
         return processed
+
+    def _filter_reposts_newer_than_cursor(self, reposts: list[RepostEvent], since_id: str) -> list[RepostEvent]:
+        def _as_int(value: str) -> int | None:
+            return int(value) if value.isdigit() else None
+
+        cursor_id = _as_int(since_id)
+        if cursor_id is None:
+            return reposts
+
+        filtered = []
+        for event in reposts:
+            event_id = _as_int(event.repost_tweet_id)
+            if event_id is None or event_id > cursor_id:
+                filtered.append(event)
+        return sorted(filtered, key=lambda event: _as_int(event.repost_tweet_id) or 0)
 
     def force_refresh_and_retry_unsent(self) -> dict[str, int]:
         unsent_repost_ids = set(self.db.list_unsent_repost_ids())
