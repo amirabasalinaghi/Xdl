@@ -551,7 +551,15 @@ def _write_env_file(settings: Settings) -> None:
 
 
 def _settings_payload(settings: Settings) -> dict[str, str]:
-    return settings.to_env_dict()
+    env_values = settings.to_env_dict()
+    return {
+        **env_values,
+        "x_user_id": settings.x_user_id,
+        "x_bearer_token": settings.x_bearer_token,
+        "telegram_bot_token": settings.telegram_bot_token,
+        "telegram_chat_id": settings.telegram_chat_id,
+        "media_download_mode": settings.media_download_mode,
+    }
 
 
 def _normalize_download_mode(raw_mode: str | None, default: str) -> str:
