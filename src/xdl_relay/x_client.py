@@ -137,6 +137,7 @@ class XClient:
         events: list[RepostEvent] = []
         included_tweets = {t["id"]: t for t in payload.get("includes", {}).get("tweets", []) if t.get("id")}
         included_media = {m["media_key"]: m for m in payload.get("includes", {}).get("media", []) if m.get("media_key")}
+        fetched_referenced_tweets: dict[str, tuple[dict, dict[str, dict]]] = {}
 
         for tweet in tweets:
             references = tweet.get("referenced_tweets", [])
@@ -146,12 +147,20 @@ class XClient:
             )
             if not retweet_ref:
                 continue
-            repost_ref = included_tweets.get(retweet_ref.get("id", ""))
+            referenced_id = retweet_ref.get("id", "")
+            repost_ref = included_tweets.get(referenced_id)
+            referenced_media_map = included_media
+            if not repost_ref and referenced_id:
+                if referenced_id not in fetched_referenced_tweets:
+                    fetched_referenced_tweets[referenced_id] = self._fetch_tweet_with_media(referenced_id)
+                fetched_tweet, fetched_media = fetched_referenced_tweets[referenced_id]
+                repost_ref = fetched_tweet
+                referenced_media_map = fetched_media
             if not repost_ref:
                 continue
             media_keys = repost_ref.get("attachments", {}).get("media_keys", [])
             media = [
-                self._convert_media(included_media.get(media_key), fallback_key=media_key)
+                self._convert_media(referenced_media_map.get(media_key), fallback_key=media_key)
                 for media_key in media_keys
             ]
             media = [m for m in media if m is not None]
@@ -168,6 +177,32 @@ class XClient:
                     )
                 )
         return events
+
+    def _fetch_tweet_with_media(self, tweet_id: str) -> tuple[dict, dict[str, dict]]:
+        params = {
+            "tweet.fields": "text,author_id,attachments",
+            "expansions": "attachments.media_keys",
+            "media.fields": "type,url,variants",
+        }
+        url = f"{self.API_BASE_URL}/tweets/{tweet_id}?{urlencode(params)}"
+        try:
+            payload = get_json(
+                url,
+                headers=self._auth_headers(),
+                timeout=self.timeout,
+                retries=self.retries,
+                backoff_seconds=self.backoff_seconds,
+            )
+        except HTTPError:
+            return {}, {}
+
+        tweet = payload.get("data", {}) or {}
+        media_map = {
+            media["media_key"]: media
+            for media in payload.get("includes", {}).get("media", [])
+            if media.get("media_key")
+        }
+        return tweet, media_map
 
     def _resolve_user_id(self, user_id: str) -> str:
         normalized = user_id.strip()
