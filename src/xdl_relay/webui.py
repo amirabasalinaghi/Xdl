@@ -168,7 +168,13 @@ HTML_PAGE = """<!doctype html>
     .status-sent { background: rgba(34, 197, 94, 0.18); color: #86efac; }
     .status-failed { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
     .status-pending { background: rgba(234, 179, 8, 0.18); color: #fde68a; }
-    .row { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
+    .row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      align-items: stretch;
+    }
+    .row .card { height: 100%; }
     @media (max-width: 980px) { .row { grid-template-columns: 1fr; } }
     .saved-note { font-size: 0.76rem; color: #93c5fd; min-height: 1rem; }
     .log-level-info { color: #93c5fd; }
