@@ -198,6 +198,14 @@ class XClient:
                 source_tweet = tweet
                 source_media_map = included_media
 
+            source_tweet, source_media_map = self._resolve_media_source(
+                source_tweet=source_tweet,
+                source_media_map=source_media_map,
+                included_tweets=included_tweets,
+                included_media=included_media,
+                fetched_referenced_tweets=fetched_referenced_tweets,
+            )
+
             media_keys = source_tweet.get("attachments", {}).get("media_keys", [])
             media = [
                 self._convert_media(source_media_map.get(media_key), fallback_key=media_key)
@@ -218,10 +226,55 @@ class XClient:
                 )
         return events
 
+    def _resolve_media_source(
+        self,
+        source_tweet: dict,
+        source_media_map: dict[str, dict],
+        included_tweets: dict[str, dict],
+        included_media: dict[str, dict],
+        fetched_referenced_tweets: dict[str, tuple[dict, dict[str, dict]]],
+    ) -> tuple[dict, dict[str, dict]]:
+        current_tweet = source_tweet
+        current_media_map = source_media_map
+        seen_ids: set[str] = set()
+
+        # Retweeted posts can point to a quoted post that actually contains the media.
+        # Walk a short chain of quoted references to avoid missing those media items.
+        for _ in range(3):
+            media_keys = current_tweet.get("attachments", {}).get("media_keys", [])
+            if media_keys:
+                return current_tweet, current_media_map
+
+            current_id = str(current_tweet.get("id", "") or "")
+            if current_id:
+                seen_ids.add(current_id)
+
+            references = current_tweet.get("referenced_tweets", [])
+            quoted_ref = next((ref for ref in references if ref.get("type") == "quoted"), None)
+            quoted_id = str(quoted_ref.get("id", "") or "") if quoted_ref else ""
+            if not quoted_id or quoted_id in seen_ids:
+                break
+
+            quoted_tweet = included_tweets.get(quoted_id)
+            quoted_media_map = included_media
+            if not quoted_tweet:
+                if quoted_id not in fetched_referenced_tweets:
+                    fetched_referenced_tweets[quoted_id] = self._fetch_tweet_with_media(quoted_id)
+                fetched_tweet, fetched_media = fetched_referenced_tweets[quoted_id]
+                quoted_tweet = fetched_tweet
+                quoted_media_map = fetched_media
+            if not quoted_tweet:
+                break
+
+            current_tweet = quoted_tweet
+            current_media_map = quoted_media_map
+
+        return current_tweet, current_media_map
+
     def _fetch_tweet_with_media(self, tweet_id: str) -> tuple[dict, dict[str, dict]]:
         params = {
-            "tweet.fields": "text,author_id,attachments",
-            "expansions": "attachments.media_keys",
+            "tweet.fields": "text,author_id,attachments,referenced_tweets",
+            "expansions": "attachments.media_keys,referenced_tweets.id,referenced_tweets.id.attachments.media_keys",
             "media.fields": "type,url,variants",
         }
         url = f"{self.API_BASE_URL}/tweets/{tweet_id}?{urlencode(params)}"
