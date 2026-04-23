@@ -127,9 +127,12 @@ class RelayService:
             }
         self._last_profile_scan_stats = profile_stats
         self.db.add_profile_scan_totals(profile_stats)
+        latest_profile_tweet_id = getattr(self.x_client, "latest_profile_tweet_id", None)
         reposts = [event for event in reposts if self._event_has_relayable_media(event)]
         pic_count, video_count = self._count_media_types(reposts)
         if not reposts:
+            if latest_profile_tweet_id:
+                self.db.set_last_seen_tweet_id(str(latest_profile_tweet_id))
             return self._empty_poll_result(profile_stats=profile_stats)
 
         new_count = 0
@@ -148,6 +151,9 @@ class RelayService:
             if succeeded:
                 processed += 1
             self.db.set_last_seen_tweet_id(event.repost_tweet_id)
+
+        if latest_profile_tweet_id:
+            self.db.set_last_seen_tweet_id(str(latest_profile_tweet_id))
 
         return {
             "fetched": len(reposts),
