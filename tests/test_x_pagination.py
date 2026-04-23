@@ -30,13 +30,13 @@ class TestXPagination(unittest.TestCase):
 
         with patch(
             "xdl_relay.x_client.get_json",
-            side_effect=[page1, page2, {"data": [], "meta": {}}],
+            side_effect=[page1, page2],
         ) as mock_get:
             events = client.get_new_reposts("1")
 
         self.assertEqual(len(events), 2)
         self.assertEqual([e.repost_tweet_id for e in events], ["101", "102"])
-        self.assertEqual(mock_get.call_count, 3)
+        self.assertEqual(mock_get.call_count, 2)
 
     def test_get_new_reposts_uses_valid_expansions(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
@@ -65,7 +65,7 @@ class TestXPagination(unittest.TestCase):
 
         with patch(
             "xdl_relay.x_client.get_json",
-            side_effect=[payload, {"data": [], "meta": {}}],
+            return_value=payload,
         ):
             with self.assertLogs("xdl_relay.x_client", level="INFO") as logs:
                 events = client.get_new_reposts("1")

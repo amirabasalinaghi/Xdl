@@ -29,7 +29,6 @@ class XClient:
         self.max_pages = max_pages
         self.page_size = min(100, max(5, page_size))
         self.bearer_token = bearer_token
-        self._reverse_timeline_enabled = True
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
         events, _stats = self.get_new_reposts_with_stats(user_id=user_id, since_id=since_id)
@@ -46,44 +45,13 @@ class XClient:
             f"/users/{resolved_user_id}/tweets",
             since_id=since_id,
         )
-        timeline_events: list[RepostEvent] = []
-        timeline_post_kinds: dict[str, dict[str, bool]] = {}
-        timeline_endpoint = f"/users/{resolved_user_id}/timelines/reverse_chronological"
-        if self._reverse_timeline_enabled:
-            try:
-                timeline_events, timeline_post_kinds = self._collect_reposts_for_endpoint(
-                    timeline_endpoint,
-                    since_id=since_id,
-                )
-            except RuntimeError as exc:
-                message = str(exc)
-                if "OAuth 2.0 User Context" in message:
-                    self._reverse_timeline_enabled = False
-                    logger.warning(
-                        "Reverse timeline endpoint disabled for subsequent polls because app-only bearer "
-                        "authentication is not supported: %s",
-                        message,
-                    )
-                else:
-                    logger.warning("Reverse timeline request failed for endpoint=%s: %s", timeline_endpoint, message)
-
-        merged_by_id = {event.repost_tweet_id: event for event in profile_events}
-        merged_by_id.update({event.repost_tweet_id: event for event in timeline_events})
-        merged = sorted(merged_by_id.values(), key=lambda event: int(event.repost_tweet_id))
-        merged_post_kinds = profile_post_kinds
-        for tweet_id, kinds in timeline_post_kinds.items():
-            if tweet_id not in merged_post_kinds:
-                merged_post_kinds[tweet_id] = kinds
-                continue
-            for kind_name, enabled in kinds.items():
-                merged_post_kinds[tweet_id][kind_name] = merged_post_kinds[tweet_id].get(kind_name, False) or enabled
-        post_stats = self._summarize_post_kinds(merged_post_kinds)
+        post_stats = self._summarize_post_kinds(profile_post_kinds)
         logger.info(
-            "Collected %s unique repost event(s) across profile+timeline endpoints (posts_seen=%s)",
-            len(merged),
+            "Collected %s repost event(s) from monitored account feed (posts_seen=%s)",
+            len(profile_events),
             post_stats["total_profile_posts_seen"],
         )
-        return merged, post_stats
+        return profile_events, post_stats
 
     def _collect_reposts_for_endpoint(
         self,
