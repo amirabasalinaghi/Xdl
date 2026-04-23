@@ -56,6 +56,9 @@ class TestServiceBehavior(unittest.TestCase):
 
             service.process_once()
             self.assertEqual(service.x_client.calls[0], ("user-one", "999"))
+            service.db.create_repost_event("200", "150")
+            service.db.mark_sent("200", "1")
+            self.assertEqual(service.db.get_overview()["total_events"], 1)
 
             service.update_settings(
                 Settings(
@@ -71,6 +74,7 @@ class TestServiceBehavior(unittest.TestCase):
             service.process_once()
             self.assertEqual(service.x_client.calls[0], ("user-two", None))
             self.assertEqual(service.db.get_monitored_user_id(), "user-two")
+            self.assertEqual(service.db.get_overview()["total_events"], 0)
 
     def test_failed_event_advances_last_seen(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -46,6 +46,22 @@ class TestRelayDB(unittest.TestCase):
             db.set_last_seen_tweet_id(None)
             self.assertIsNone(db.get_last_seen_tweet_id())
 
+    def test_reset_runtime_history_clears_dashboard_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "relay.db")
+            db = RelayDB(db_path)
+            db.create_repost_event("100", "90")
+            db.mark_sent("100", "1")
+            db.upsert_media_index("90", "m1", "photo", "https://example.com/p1.jpg", "/tmp/p1.jpg")
+
+            self.assertEqual(db.get_overview()["total_events"], 1)
+            self.assertEqual(db.get_overview()["total_media_seen"], 1)
+
+            db.reset_runtime_history()
+
+            self.assertEqual(db.get_overview()["total_events"], 0)
+            self.assertEqual(db.get_overview()["total_media_seen"], 0)
+
     def test_overview_includes_seen_post_and_media_counters(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "relay.db")

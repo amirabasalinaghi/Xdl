@@ -117,10 +117,11 @@ class RelayService:
 
         if stored_user != current_user:
             logger.warning(
-                "Monitored user changed from %s to %s. Resetting since_id checkpoint.",
+                "Monitored user changed from %s to %s. Resetting checkpoint and runtime history.",
                 stored_user,
                 current_user,
             )
+            self.db.reset_runtime_history()
             self.db.set_last_seen_tweet_id(None)
             self.db.set_monitored_user_id(current_user)
 
