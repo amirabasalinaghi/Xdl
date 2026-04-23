@@ -133,6 +133,46 @@ class TestXParsing(unittest.TestCase):
         self.assertEqual(events[0].repost_tweet_id, "401")
         self.assertEqual(events[0].original_tweet_id, "401")
 
+    def test_extract_repost_events_uses_parent_reply_media_when_reply_has_none(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [
+                {
+                    "id": "402",
+                    "text": "reply no media",
+                    "author_id": "1",
+                    "referenced_tweets": [{"type": "replied_to", "id": "121"}],
+                }
+            ],
+            "includes": {
+                "tweets": [{"id": "121", "author_id": "2", "text": "parent with media", "attachments": {"media_keys": ["3_121"]}}],
+                "media": [{"media_key": "3_121", "type": "photo", "url": "https://x/img121.jpg"}],
+            },
+            "meta": {},
+        }
+
+        events = client._extract_repost_events(payload["data"], payload)
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].repost_tweet_id, "402")
+        self.assertEqual(events[0].original_tweet_id, "121")
+        self.assertEqual(events[0].media[0].media_key, "3_121")
+
+    def test_convert_media_video_falls_back_to_first_variant_url(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        media = {
+            "media_key": "3_fallback",
+            "type": "video",
+            "variants": [
+                {"content_type": "application/x-mpegURL", "url": "https://video/master.m3u8"},
+            ],
+        }
+
+        converted = client._convert_media(media)
+
+        self.assertIsNotNone(converted)
+        self.assertEqual(converted.url, "https://video/master.m3u8")
+
     def test_get_new_reposts_includes_profile_post_media(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
         profile_payload = {

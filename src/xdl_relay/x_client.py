@@ -254,9 +254,9 @@ class XClient:
         current_media_map = source_media_map
         seen_ids: set[str] = set()
 
-        # Retweeted posts can point to a quoted post that actually contains the media.
-        # Walk a short chain of quoted references to avoid missing those media items.
-        for _ in range(3):
+        # Walk a short chain of related references (repost/quote/reply) so
+        # media attached to a parent/original post is not missed.
+        for _ in range(5):
             media_keys = current_tweet.get("attachments", {}).get("media_keys", [])
             if media_keys:
                 return current_tweet, current_media_map
@@ -265,27 +265,40 @@ class XClient:
             if current_id:
                 seen_ids.add(current_id)
 
-            references = current_tweet.get("referenced_tweets", [])
-            quoted_ref = next((ref for ref in references if ref.get("type") == "quoted"), None)
-            quoted_id = str(quoted_ref.get("id", "") or "") if quoted_ref else ""
-            if not quoted_id or quoted_id in seen_ids:
+            next_ref_id = self._find_next_reference_id(current_tweet.get("referenced_tweets", []), seen_ids)
+            if not next_ref_id:
                 break
 
-            quoted_tweet = included_tweets.get(quoted_id)
-            quoted_media_map = included_media
-            if not quoted_tweet:
-                if quoted_id not in fetched_referenced_tweets:
-                    fetched_referenced_tweets[quoted_id] = self._fetch_tweet_with_media(quoted_id)
-                fetched_tweet, fetched_media = fetched_referenced_tweets[quoted_id]
-                quoted_tweet = fetched_tweet
-                quoted_media_map = fetched_media
-            if not quoted_tweet:
+            next_tweet = included_tweets.get(next_ref_id)
+            next_media_map = included_media
+            if not next_tweet:
+                if next_ref_id not in fetched_referenced_tweets:
+                    fetched_referenced_tweets[next_ref_id] = self._fetch_tweet_with_media(next_ref_id)
+                fetched_tweet, fetched_media = fetched_referenced_tweets[next_ref_id]
+                next_tweet = fetched_tweet
+                next_media_map = fetched_media
+            if not next_tweet:
                 break
 
-            current_tweet = quoted_tweet
-            current_media_map = quoted_media_map
+            current_tweet = next_tweet
+            current_media_map = next_media_map
 
         return current_tweet, current_media_map
+
+    def _find_next_reference_id(self, references: list[dict], seen_ids: set[str]) -> str:
+        if not references:
+            return ""
+        priority = ("retweeted", "reposted", "quoted", "replied_to")
+        for ref_type in priority:
+            match = next((ref for ref in references if str(ref.get("type", "")).lower() == ref_type), None)
+            ref_id = str((match or {}).get("id", "") or "")
+            if ref_id and ref_id not in seen_ids:
+                return ref_id
+        for ref in references:
+            ref_id = str(ref.get("id", "") or "")
+            if ref_id and ref_id not in seen_ids:
+                return ref_id
+        return ""
 
     def _fetch_tweet_with_media(self, tweet_id: str) -> tuple[dict, dict[str, dict]]:
         params = {
@@ -364,9 +377,14 @@ class XClient:
             url = media_payload.get("url")
         else:
             best_variant = extract_best_media_variant(media_payload)
-            if not best_variant:
-                return None
-            url = best_variant.get("url")
+            if best_variant:
+                url = best_variant.get("url")
+            else:
+                url = media_payload.get("url")
+                if not url:
+                    raw_variants = media_payload.get("video_info", {}).get("variants", []) or media_payload.get("variants", [])
+                    first_variant = next((variant for variant in raw_variants if variant.get("url")), {})
+                    url = first_variant.get("url")
 
         if not url or not media_key:
             return None
