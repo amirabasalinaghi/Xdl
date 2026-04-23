@@ -236,7 +236,6 @@ HTML_PAGE = """<!doctype html>
       </div>
       <div class=\"toolbar\">
         <button id=\"process\">Process once now</button>
-        <button id=\"force-refresh\" class=\"btn-secondary\">Force refresh + retry unsent</button>
         <button id=\"full-index\" class=\"btn-secondary\">Index full profile media</button>
       </div>
     </div>
@@ -599,26 +598,6 @@ HTML_PAGE = """<!doctype html>
         btn.textContent = 'Process once now';
       }
     });
-    document.getElementById('force-refresh').addEventListener('click', async () => {
-      const btn = document.getElementById('force-refresh');
-      btn.disabled = true;
-      btn.textContent = 'Refreshing...';
-      try {
-        const result = await getJson('/api/force-refresh-retry', { method: 'POST' });
-        await refreshAll();
-        toast(
-          `Force refresh saw ${result.fetched} repost(s) total: ${result.pics} pic(s), ${result.videos} video(s), ${result.new} new. ` +
-          `Retried ${result.retried} unsent and recovered ${result.retried_success}. ` +
-          `Newly processed: ${result.new_processed}.`,
-          "success"
-        );
-      } catch (err) {
-        toast(err.message, "error");
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Force refresh + retry unsent';
-      }
-    });
     document.getElementById('full-index').addEventListener('click', async () => {
       const btn = document.getElementById('full-index');
       btn.disabled = true;
@@ -801,15 +780,6 @@ class DashboardServer:
                         self._json_response(result)
                     except Exception as exc:
                         logger.exception("Manual process_once failed: %s", exc)
-                        self._json_response({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
-                    return
-
-                if parsed.path == "/api/force-refresh-retry":
-                    try:
-                        result = relay_service.force_refresh_and_retry_unsent()
-                        self._json_response(result)
-                    except Exception as exc:
-                        logger.exception("Force refresh + retry failed: %s", exc)
                         self._json_response({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
                     return
 
