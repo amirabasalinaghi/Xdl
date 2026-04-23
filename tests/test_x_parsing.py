@@ -114,6 +114,31 @@ class TestXParsing(unittest.TestCase):
         self.assertEqual(stats["total_quotes_seen"], 1)
         self.assertEqual(stats["total_original_posts_seen"], 1)
 
+    def test_extract_repost_events_fetches_missing_media_keys_for_included_tweet(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [{"id": "302", "text": "repost", "referenced_tweets": [{"type": "retweeted", "id": "901"}]}],
+            "includes": {
+                "tweets": [{"id": "901", "author_id": "a9", "text": "orig", "attachments": {"media_keys": ["3_a", "3_b"]}}],
+                "media": [{"media_key": "3_a", "type": "photo", "url": "https://x/img-a.jpg"}],
+            },
+            "meta": {},
+        }
+
+        with patch.object(
+            client,
+            "_fetch_tweet_with_media",
+            return_value=(
+                {"id": "901", "author_id": "a9", "text": "orig", "attachments": {"media_keys": ["3_a", "3_b"]}},
+                {"3_b": {"media_key": "3_b", "type": "photo", "url": "https://x/img-b.jpg"}},
+            ),
+        ) as mock_fetch:
+            events = client._extract_repost_events(payload["data"], payload)
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual([m.media_key for m in events[0].media], ["3_a", "3_b"])
+        mock_fetch.assert_called_once_with("901")
+
     def test_extract_repost_events_preserves_media_key_when_some_media_missing(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
         payload = {
@@ -125,7 +150,8 @@ class TestXParsing(unittest.TestCase):
             "meta": {},
         }
 
-        events = client._extract_repost_events(payload["data"], payload)
+        with patch.object(client, "_fetch_tweet_with_media", return_value=({}, {})):
+            events = client._extract_repost_events(payload["data"], payload)
 
         self.assertEqual(len(events), 1)
         self.assertEqual(len(events[0].media), 1)
