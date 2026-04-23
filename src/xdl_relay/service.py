@@ -50,172 +50,47 @@ class RelayService:
 
     def process_once(self) -> int:
         with self._process_lock:
-            since_id = self.db.get_last_seen_tweet_id()
-            reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id)
-            if since_id:
-                reposts = self._filter_reposts_newer_than_cursor(reposts, since_id)
-            if not reposts and since_id:
-                logger.info(
-                    "No reposts returned for since_id=%s; running catch-up scan without cursor to avoid missing recent reposts.",
-                    since_id,
-                )
-                recent_reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
-                reposts = self._filter_reposts_newer_than_cursor(recent_reposts, since_id)
-            if not reposts:
-                return 0
-
-            processed = 0
-            for event in reposts:
-                logger.info(
-                    "Processing repost=%s original=%s media_count=%s",
-                    event.repost_tweet_id,
-                    event.original_tweet_id,
-                    len(event.media),
-                )
-                created, succeeded = self._process_event(event)
-                if succeeded:
-                    processed += 1
-                if not succeeded:
-                    logger.warning("Repost %s failed delivery; cursor will still advance", event.repost_tweet_id)
-                # Always advance cursor for fetched events so one failing repost
-                # does not block discovering newer reposts.
-                self.db.set_last_seen_tweet_id(event.repost_tweet_id)
-
-            return processed
+            stats = self._process_full_profile_scan(log_prefix="Polling")
+            return stats["processed"]
 
     def process_once_with_stats(self) -> dict[str, int]:
         with self._process_lock:
-            since_id = self.db.get_last_seen_tweet_id()
-            reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id)
-            if since_id:
-                reposts = self._filter_reposts_newer_than_cursor(reposts, since_id)
-            if not reposts and since_id:
-                logger.info(
-                    "No reposts returned for since_id=%s; running catch-up scan without cursor to avoid missing recent reposts.",
-                    since_id,
-                )
-                recent_reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
-                reposts = self._filter_reposts_newer_than_cursor(recent_reposts, since_id)
-
-            pic_count, video_count = self._count_media_types(reposts)
-            if not reposts:
-                return {"fetched": 0, "pics": 0, "videos": 0, "new": 0, "processed": 0}
-
-            new_count = 0
-            processed = 0
-            for event in reposts:
-                logger.info(
-                    "Processing repost=%s original=%s media_count=%s",
-                    event.repost_tweet_id,
-                    event.original_tweet_id,
-                    len(event.media),
-                )
-                created, succeeded = self._process_event(event)
-                if created:
-                    new_count += 1
-                if succeeded:
-                    processed += 1
-                if not succeeded:
-                    logger.warning("Repost %s failed delivery; cursor will still advance", event.repost_tweet_id)
-                self.db.set_last_seen_tweet_id(event.repost_tweet_id)
-
-            return {
-                "fetched": len(reposts),
-                "pics": pic_count,
-                "videos": video_count,
-                "new": new_count,
-                "processed": processed,
-            }
-
-    def _filter_reposts_newer_than_cursor(self, reposts: list[RepostEvent], since_id: str) -> list[RepostEvent]:
-        def _as_int(value: str) -> int | None:
-            return int(value) if value.isdigit() else None
-
-        cursor_id = _as_int(since_id)
-        if cursor_id is None:
-            return reposts
-
-        filtered = []
-        for event in reposts:
-            event_id = _as_int(event.repost_tweet_id)
-            if event_id is None or event_id > cursor_id:
-                filtered.append(event)
-        return sorted(filtered, key=lambda event: _as_int(event.repost_tweet_id) or 0)
-
-    def force_refresh_and_retry_unsent(self) -> dict[str, int]:
-        with self._process_lock:
-            unsent_repost_ids = set(self.db.list_unsent_repost_ids())
-            reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
-            pic_count, video_count = self._count_media_types(reposts)
-            if not reposts:
-                return {
-                    "fetched": 0,
-                    "pics": 0,
-                    "videos": 0,
-                    "retried": 0,
-                    "retried_success": 0,
-                    "new": 0,
-                    "new_processed": 0,
-                }
-
-            retried = 0
-            retried_success = 0
-            new_count = 0
-            new_processed = 0
-
-            for event in reposts:
-                if event.repost_tweet_id in unsent_repost_ids:
-                    retried += 1
-                    if self._deliver_event(event):
-                        retried_success += 1
-                    continue
-
-                created, succeeded = self._process_event(event)
-                if created:
-                    new_count += 1
-                if created and succeeded:
-                    new_processed += 1
-
-            return {
-                "fetched": len(reposts),
-                "pics": pic_count,
-                "videos": video_count,
-                "retried": retried,
-                "retried_success": retried_success,
-                "new": new_count,
-                "new_processed": new_processed,
-            }
+            return self._process_full_profile_scan(log_prefix="Manual")
 
     def index_full_profile_with_stats(self) -> dict[str, int]:
         with self._process_lock:
-            reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
-            pic_count, video_count = self._count_media_types(reposts)
-            if not reposts:
-                return {"fetched": 0, "pics": 0, "videos": 0, "new": 0, "processed": 0}
+            return self._process_full_profile_scan(log_prefix="Full profile index")
 
-            new_count = 0
-            processed = 0
-            for event in reposts:
-                logger.info(
-                    "Full profile index processing repost=%s original=%s media_count=%s",
-                    event.repost_tweet_id,
-                    event.original_tweet_id,
-                    len(event.media),
-                )
-                created, succeeded = self._process_event(event)
-                if created:
-                    new_count += 1
-                if succeeded:
-                    processed += 1
-                self.db.set_last_seen_tweet_id(event.repost_tweet_id)
+    def _process_full_profile_scan(self, log_prefix: str) -> dict[str, int]:
+        reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
+        pic_count, video_count = self._count_media_types(reposts)
+        if not reposts:
+            return {"fetched": 0, "pics": 0, "videos": 0, "new": 0, "processed": 0}
 
-            return {
-                "fetched": len(reposts),
-                "pics": pic_count,
-                "videos": video_count,
-                "new": new_count,
-                "processed": processed,
-            }
+        new_count = 0
+        processed = 0
+        for event in reposts:
+            logger.info(
+                "%s processing repost=%s original=%s media_count=%s",
+                log_prefix,
+                event.repost_tweet_id,
+                event.original_tweet_id,
+                len(event.media),
+            )
+            created, succeeded = self._process_event(event)
+            if created:
+                new_count += 1
+            if succeeded:
+                processed += 1
+            self.db.set_last_seen_tweet_id(event.repost_tweet_id)
+
+        return {
+            "fetched": len(reposts),
+            "pics": pic_count,
+            "videos": video_count,
+            "new": new_count,
+            "processed": processed,
+        }
 
     def run_forever(self) -> None:
         logger.info("Starting relay with poll interval=%ss", self.settings.poll_interval_seconds)

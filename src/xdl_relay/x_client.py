@@ -179,7 +179,6 @@ class XClient:
                 None,
             )
             is_repost = retweet_ref is not None
-            is_reply = any(ref.get("type") == "replied_to" for ref in references)
             if is_repost:
                 referenced_id = retweet_ref.get("id", "")
                 source_tweet = included_tweets.get(referenced_id)
@@ -193,8 +192,6 @@ class XClient:
                 if not source_tweet:
                     continue
             else:
-                if is_reply:
-                    continue
                 source_tweet = tweet
                 source_media_map = included_media
 
