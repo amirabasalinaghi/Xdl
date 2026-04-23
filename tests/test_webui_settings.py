@@ -29,6 +29,8 @@ class TestWebUISettings(unittest.TestCase):
         self.assertIn("X API Max Pages (1-100)", HTML_PAGE)
         self.assertIn("X API Page Size (5-100)", HTML_PAGE)
         self.assertIn("s.max_media_bytes || 52428800", HTML_PAGE)
+        self.assertIn("Index full profile media", HTML_PAGE)
+        self.assertIn("/api/index-full-profile", HTML_PAGE)
 
     def test_normalize_download_mode(self) -> None:
         self.assertEqual(_normalize_download_mode("pic", "both"), "pic")
