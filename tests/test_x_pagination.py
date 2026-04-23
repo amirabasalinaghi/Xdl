@@ -54,6 +54,28 @@ class TestXPagination(unittest.TestCase):
         self.assertIn("referenced_tweets.id.attachments.media_keys", expansions)
         self.assertNotIn("video_info", media_fields)
 
+    def test_get_new_reposts_logs_skipped_non_media_posts(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [
+                {"id": "101", "text": "plain post without media"},
+            ],
+            "meta": {},
+        }
+
+        with patch(
+            "xdl_relay.x_client.get_json",
+            side_effect=[payload, {"data": [], "meta": {}}],
+        ):
+            with self.assertLogs("xdl_relay.x_client", level="INFO") as logs:
+                events = client.get_new_reposts("1")
+
+        self.assertEqual(events, [])
+        self.assertTrue(
+            any("Skipped 1 post(s)" in message for message in logs.output),
+            "expected skipped-non-media log message to be emitted",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
