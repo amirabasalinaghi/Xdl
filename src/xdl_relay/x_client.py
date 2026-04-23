@@ -174,10 +174,7 @@ class XClient:
 
         for tweet in tweets:
             references = tweet.get("referenced_tweets", [])
-            retweet_ref = next(
-                (ref for ref in references if ref.get("type") in {"retweeted", "reposted"}),
-                None,
-            )
+            retweet_ref = self._find_repost_reference(references)
             is_repost = retweet_ref is not None
             if is_repost:
                 referenced_id = retweet_ref.get("id", "")
@@ -222,6 +219,18 @@ class XClient:
                     )
                 )
         return events
+
+    def _find_repost_reference(self, references: list[dict]) -> dict | None:
+        for ref in references:
+            ref_type = str(ref.get("type", "")).lower()
+            if ref_type in {"retweeted", "reposted"}:
+                return ref
+            # X response shapes can vary across endpoints/plans. Accept
+            # any retweet/repost-like reference type to avoid dropping
+            # genuine repost events when labels drift.
+            if "retweet" in ref_type or "repost" in ref_type:
+                return ref
+        return None
 
     def _resolve_media_source(
         self,
