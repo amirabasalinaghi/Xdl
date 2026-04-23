@@ -248,7 +248,8 @@ class XClient:
                     source_tweet = cached_tweet
                     source_media_map = cached_media
                 if not source_tweet:
-                    continue
+                    source_tweet = tweet
+                    source_media_map = included_media
             else:
                 source_tweet = tweet
                 source_media_map = included_media
@@ -260,18 +261,31 @@ class XClient:
                 included_media=included_media,
                 fetched_referenced_tweets=fetched_referenced_tweets,
             )
-
-            media_keys = source_tweet.get("attachments", {}).get("media_keys", [])
-            source_media_map = self._ensure_media_keys_available(
+            media = self._extract_media_items(
                 source_tweet=source_tweet,
-                media_map=source_media_map,
+                source_media_map=source_media_map,
                 fetched_referenced_tweets=fetched_referenced_tweets,
             )
-            media = [
-                self._convert_media(source_media_map.get(media_key), fallback_key=media_key)
-                for media_key in media_keys
-            ]
-            media = [m for m in media if m is not None]
+            if not media and is_repost:
+                # Some reposts can lose visibility of the referenced source
+                # tweet (deleted/protected/geoblocked). Fall back to the
+                # repost tweet graph so fresh media on the repost path still
+                # relays instead of being dropped.
+                fallback_tweet, fallback_media_map = self._resolve_media_source(
+                    source_tweet=tweet,
+                    source_media_map=included_media,
+                    included_tweets=included_tweets,
+                    included_media=included_media,
+                    fetched_referenced_tweets=fetched_referenced_tweets,
+                )
+                fallback_media = self._extract_media_items(
+                    source_tweet=fallback_tweet,
+                    source_media_map=fallback_media_map,
+                    fetched_referenced_tweets=fetched_referenced_tweets,
+                )
+                if fallback_media:
+                    source_tweet = fallback_tweet
+                    media = fallback_media
 
             if media:
                 events.append(
@@ -285,6 +299,26 @@ class XClient:
                     )
                 )
         return events
+
+    def _extract_media_items(
+        self,
+        source_tweet: dict,
+        source_media_map: dict[str, dict],
+        fetched_referenced_tweets: dict[str, tuple[dict, dict[str, dict]]],
+    ) -> list[MediaItem]:
+        media_keys = source_tweet.get("attachments", {}).get("media_keys", [])
+        if not media_keys:
+            return []
+        source_media_map = self._ensure_media_keys_available(
+            source_tweet=source_tweet,
+            media_map=source_media_map,
+            fetched_referenced_tweets=fetched_referenced_tweets,
+        )
+        media = [
+            self._convert_media(source_media_map.get(media_key), fallback_key=media_key)
+            for media_key in media_keys
+        ]
+        return [m for m in media if m is not None]
 
     def _find_repost_reference(self, references: list[dict]) -> dict | None:
         for ref in references:
