@@ -50,18 +50,22 @@ class RelayService:
 
     def process_once(self) -> int:
         with self._process_lock:
-            stats = self._process_full_profile_scan(log_prefix="Polling")
+            stats = self._poll_with_stats(log_prefix="Polling")
             return stats["processed"]
 
     def process_once_with_stats(self) -> dict[str, int]:
         with self._process_lock:
-            return self._process_full_profile_scan(log_prefix="Manual")
+            return self._poll_with_stats(log_prefix="Manual")
 
     def index_full_profile_with_stats(self) -> dict[str, int]:
         with self._process_lock:
-            return self._process_full_profile_scan(log_prefix="Full profile index")
+            return self._poll_with_stats(log_prefix="Full profile index")
 
-    def _process_full_profile_scan(self, log_prefix: str) -> dict[str, int]:
+    def poll_with_stats(self) -> dict[str, int]:
+        with self._process_lock:
+            return self._poll_with_stats(log_prefix="Polling")
+
+    def _poll_with_stats(self, log_prefix: str) -> dict[str, int]:
         reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
         pic_count, video_count = self._count_media_types(reposts)
         if not reposts:
@@ -106,7 +110,14 @@ class RelayService:
     def _process_event(self, event: RepostEvent) -> tuple[bool, bool]:
         created = self.db.create_repost_event(event.repost_tweet_id, event.original_tweet_id)
         if not created:
-            return False, False
+            status = (self.db.get_repost_status(event.repost_tweet_id) or "").lower()
+            if status != "failed":
+                return False, False
+            logger.info(
+                "Retrying failed repost=%s",
+                event.repost_tweet_id,
+            )
+            return False, self._deliver_event(event)
         return True, self._deliver_event(event)
 
     def _deliver_event(self, event: RepostEvent) -> bool:

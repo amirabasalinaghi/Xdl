@@ -90,6 +90,19 @@ class RelayDB:
             except sqlite3.IntegrityError:
                 return False
 
+    def get_repost_status(self, repost_tweet_id: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT status
+                FROM repost_events
+                WHERE repost_tweet_id = ?
+                LIMIT 1
+                """,
+                (repost_tweet_id,),
+            ).fetchone()
+        return str(row["status"]) if row and row["status"] else None
+
     def mark_sent(self, repost_tweet_id: str, telegram_message_ids: str) -> None:
         with self._connect() as conn:
             conn.execute(

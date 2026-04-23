@@ -317,6 +317,37 @@ class TestServiceBehavior(unittest.TestCase):
             self.assertEqual(processed, 2)
             self.assertEqual(dl_mock.call_count, 1)
 
+    def test_process_once_retries_failed_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            failed_event = RepostEvent(
+                repost_tweet_id="200",
+                original_tweet_id="100",
+                original_author_id="abc",
+                repost_text="retry repost",
+                original_text="retry post",
+                media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
+            )
+            service.db.create_repost_event("200", "100")
+            service.db.mark_failed("200", "download timeout")
+            service.x_client = _FakeXClient([failed_event])
+            service.telegram_client = _SuccessfulTelegramClient()
+
+            with mock.patch("xdl_relay.service.download_file", return_value=Path(tmp) / "a.jpg"):
+                result = service.process_once_with_stats()
+
+            self.assertEqual(result["fetched"], 1)
+            self.assertEqual(result["new"], 0)
+            self.assertEqual(result["processed"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
