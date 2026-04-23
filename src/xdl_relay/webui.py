@@ -423,6 +423,11 @@ HTML_PAGE = """<!doctype html>
       return `<div class=\"card\"><div class=\"muted\">${label}</div><div class=\"value\">${value}</div></div>`;
     }
 
+    function percentage(part, total) {
+      if (!total) return '0%';
+      return `${Math.round((part / total) * 100)}%`;
+    }
+
     function statusBadge(status) {
       const safe = (status || 'pending').toLowerCase();
       return `<span class="status status-${safe}">${safe}</span>`;
@@ -435,20 +440,19 @@ HTML_PAGE = """<!doctype html>
 
     async function loadOverview() {
       const o = await getJson('/api/overview');
+      const totalHandled = (o.sent_events || 0) + (o.failed_events || 0);
       document.getElementById('stats').innerHTML = [
-        card('Total profile posts seen', o.total_profile_posts_seen || 0),
+        card('Profile posts scanned', o.total_profile_posts_seen || 0),
         card('Reposts seen', o.total_reposts_seen || 0),
-        card('Replies seen', o.total_replies_seen || 0),
-        card('Quotes seen', o.total_quotes_seen || 0),
-        card('Original posts seen', o.total_original_posts_seen || 0),
-        card('Other referenced seen', o.total_other_reference_posts_seen || 0),
-        card('Relay media events stored', o.total_events),
+        card('Non-repost posts seen', (o.total_replies_seen || 0) + (o.total_quotes_seen || 0) + (o.total_original_posts_seen || 0) + (o.total_other_reference_posts_seen || 0)),
+        card('Repost events stored', o.total_events || 0),
         card('Total media seen', o.total_media_seen || 0),
         card('Photos seen', o.total_photos_seen || 0),
         card('Videos seen', o.total_videos_seen || 0),
         card('Sent', o.sent_events),
         card('Failed', o.failed_events),
         card('Pending', o.pending_events),
+        card('Delivery success rate', percentage(o.sent_events || 0, totalHandled)),
         card('Last seen tweet', o.last_seen_tweet_id || '—'),
         card('Last updated', formatDateTime(o.last_update))
       ].join('');
