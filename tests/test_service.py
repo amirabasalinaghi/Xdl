@@ -428,6 +428,67 @@ class TestServiceBehavior(unittest.TestCase):
             self.assertEqual(result["new"], 0)
             self.assertEqual(result["processed"], 1)
 
+    def test_failure_notification_sent_only_once_per_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            event = RepostEvent(
+                repost_tweet_id="200",
+                original_tweet_id="100",
+                original_author_id="abc",
+                repost_text="retry repost",
+                original_text="retry post",
+                media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
+            )
+            service.x_client = _FakeXClient([event])
+            telegram = _FailingTelegramClient()
+            service.telegram_client = telegram
+
+            with mock.patch("xdl_relay.service.download_file", return_value=Path(tmp) / "a.jpg"):
+                service.process_once()
+                service.process_once()
+
+            self.assertEqual(len(telegram.messages), 1)
+
+    def test_failed_event_stops_auto_retry_after_five_attempts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            event = RepostEvent(
+                repost_tweet_id="200",
+                original_tweet_id="100",
+                original_author_id="abc",
+                repost_text="retry repost",
+                original_text="retry post",
+                media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
+            )
+            service.x_client = _FakeXClient([event])
+            service.telegram_client = _FailingTelegramClient()
+
+            with mock.patch("xdl_relay.service.download_file", return_value=Path(tmp) / "a.jpg"):
+                for _ in range(7):
+                    service.process_once()
+
+            self.assertEqual(service.db.get_repost_failure_count("200"), 5)
+
+            retried = service.retry_failed_events()
+            self.assertEqual(retried, 1)
+            self.assertEqual(service.db.get_repost_failure_count("200"), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

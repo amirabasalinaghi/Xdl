@@ -40,6 +40,8 @@ class RelayDB:
                     repost_tweet_id TEXT UNIQUE NOT NULL,
                     original_tweet_id TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'pending',
+                    failure_count INTEGER NOT NULL DEFAULT 0,
+                    failure_notified INTEGER NOT NULL DEFAULT 0,
                     error_message TEXT,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -93,6 +95,14 @@ class RelayDB:
                 conn.execute(
                     "ALTER TABLE state ADD COLUMN cumulative_other_reference_posts_seen INTEGER NOT NULL DEFAULT 0"
                 )
+            repost_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(repost_events)").fetchall()
+            }
+            if "failure_count" not in repost_columns:
+                conn.execute("ALTER TABLE repost_events ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0")
+            if "failure_notified" not in repost_columns:
+                conn.execute("ALTER TABLE repost_events ADD COLUMN failure_notified INTEGER NOT NULL DEFAULT 0")
 
     def get_last_seen_tweet_id(self) -> str | None:
         with self._connect() as conn:
@@ -187,7 +197,14 @@ class RelayDB:
     def mark_sent(self, repost_tweet_id: str, telegram_message_ids: str) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE repost_events SET status = 'sent', updated_at = CURRENT_TIMESTAMP WHERE repost_tweet_id = ?",
+                """
+                UPDATE repost_events
+                SET status = 'sent',
+                    failure_count = 0,
+                    failure_notified = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE repost_tweet_id = ?
+                """,
                 (repost_tweet_id,),
             )
             conn.execute(
@@ -195,12 +212,67 @@ class RelayDB:
                 (repost_tweet_id, telegram_message_ids),
             )
 
-    def mark_failed(self, repost_tweet_id: str, error_message: str) -> None:
+    def mark_failed(self, repost_tweet_id: str, error_message: str) -> int:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE repost_events SET status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE repost_tweet_id = ?",
+                """
+                UPDATE repost_events
+                SET status = 'failed',
+                    failure_count = failure_count + 1,
+                    error_message = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE repost_tweet_id = ?
+                """,
                 (error_message[:4000], repost_tweet_id),
             )
+            row = conn.execute(
+                "SELECT failure_count FROM repost_events WHERE repost_tweet_id = ? LIMIT 1",
+                (repost_tweet_id,),
+            ).fetchone()
+        return int(row["failure_count"]) if row else 0
+
+    def get_repost_failure_count(self, repost_tweet_id: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT failure_count FROM repost_events WHERE repost_tweet_id = ? LIMIT 1",
+                (repost_tweet_id,),
+            ).fetchone()
+        return int(row["failure_count"]) if row and row["failure_count"] is not None else 0
+
+    def mark_failure_notified(self, repost_tweet_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE repost_events
+                SET failure_notified = 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE repost_tweet_id = ?
+                """,
+                (repost_tweet_id,),
+            )
+
+    def was_failure_notified(self, repost_tweet_id: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT failure_notified FROM repost_events WHERE repost_tweet_id = ? LIMIT 1",
+                (repost_tweet_id,),
+            ).fetchone()
+        return bool(row and int(row["failure_notified"]) == 1)
+
+    def reset_failed_attempts(self) -> int:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE repost_events
+                SET status = 'pending',
+                    failure_count = 0,
+                    failure_notified = 0,
+                    error_message = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE status = 'failed'
+                """
+            )
+        return int(cur.rowcount or 0)
 
 
     def media_hash_exists(self, media_hash: str) -> bool:

@@ -35,6 +35,24 @@ class TestRelayDB(unittest.TestCase):
             self.assertIn("101", unsent)
             self.assertNotIn("102", unsent)
 
+    def test_failure_counters_and_manual_retry_reset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "relay.db")
+            db = RelayDB(db_path)
+            db.create_repost_event("100", "90")
+
+            self.assertEqual(db.mark_failed("100", "network"), 1)
+            self.assertEqual(db.mark_failed("100", "network"), 2)
+            self.assertEqual(db.get_repost_failure_count("100"), 2)
+            self.assertFalse(db.was_failure_notified("100"))
+
+            db.mark_failure_notified("100")
+            self.assertTrue(db.was_failure_notified("100"))
+
+            self.assertEqual(db.reset_failed_attempts(), 1)
+            self.assertEqual(db.get_repost_failure_count("100"), 0)
+            self.assertFalse(db.was_failure_notified("100"))
+
     def test_monitored_user_checkpoint_scope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "relay.db")
