@@ -24,7 +24,13 @@ class RelayDB:
                 CREATE TABLE IF NOT EXISTS state (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     last_seen_tweet_id TEXT,
-                    monitored_user_id TEXT
+                    monitored_user_id TEXT,
+                    cumulative_profile_posts_seen INTEGER NOT NULL DEFAULT 0,
+                    cumulative_reposts_seen INTEGER NOT NULL DEFAULT 0,
+                    cumulative_replies_seen INTEGER NOT NULL DEFAULT 0,
+                    cumulative_quotes_seen INTEGER NOT NULL DEFAULT 0,
+                    cumulative_original_posts_seen INTEGER NOT NULL DEFAULT 0,
+                    cumulative_other_reference_posts_seen INTEGER NOT NULL DEFAULT 0
                 );
 
                 INSERT OR IGNORE INTO state (id, last_seen_tweet_id) VALUES (1, NULL);
@@ -73,6 +79,20 @@ class RelayDB:
             }
             if "monitored_user_id" not in columns:
                 conn.execute("ALTER TABLE state ADD COLUMN monitored_user_id TEXT")
+            if "cumulative_profile_posts_seen" not in columns:
+                conn.execute("ALTER TABLE state ADD COLUMN cumulative_profile_posts_seen INTEGER NOT NULL DEFAULT 0")
+            if "cumulative_reposts_seen" not in columns:
+                conn.execute("ALTER TABLE state ADD COLUMN cumulative_reposts_seen INTEGER NOT NULL DEFAULT 0")
+            if "cumulative_replies_seen" not in columns:
+                conn.execute("ALTER TABLE state ADD COLUMN cumulative_replies_seen INTEGER NOT NULL DEFAULT 0")
+            if "cumulative_quotes_seen" not in columns:
+                conn.execute("ALTER TABLE state ADD COLUMN cumulative_quotes_seen INTEGER NOT NULL DEFAULT 0")
+            if "cumulative_original_posts_seen" not in columns:
+                conn.execute("ALTER TABLE state ADD COLUMN cumulative_original_posts_seen INTEGER NOT NULL DEFAULT 0")
+            if "cumulative_other_reference_posts_seen" not in columns:
+                conn.execute(
+                    "ALTER TABLE state ADD COLUMN cumulative_other_reference_posts_seen INTEGER NOT NULL DEFAULT 0"
+                )
 
     def get_last_seen_tweet_id(self) -> str | None:
         with self._connect() as conn:
@@ -104,6 +124,41 @@ class RelayDB:
             conn.execute("DELETE FROM delivery_logs")
             conn.execute("DELETE FROM media_hashes")
             conn.execute("DELETE FROM media_index")
+            conn.execute(
+                """
+                UPDATE state
+                SET cumulative_profile_posts_seen = 0,
+                    cumulative_reposts_seen = 0,
+                    cumulative_replies_seen = 0,
+                    cumulative_quotes_seen = 0,
+                    cumulative_original_posts_seen = 0,
+                    cumulative_other_reference_posts_seen = 0
+                WHERE id = 1
+                """
+            )
+
+    def add_profile_scan_totals(self, stats: dict[str, int]) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE state
+                SET cumulative_profile_posts_seen = cumulative_profile_posts_seen + ?,
+                    cumulative_reposts_seen = cumulative_reposts_seen + ?,
+                    cumulative_replies_seen = cumulative_replies_seen + ?,
+                    cumulative_quotes_seen = cumulative_quotes_seen + ?,
+                    cumulative_original_posts_seen = cumulative_original_posts_seen + ?,
+                    cumulative_other_reference_posts_seen = cumulative_other_reference_posts_seen + ?
+                WHERE id = 1
+                """,
+                (
+                    int(stats.get("total_profile_posts_seen", 0)),
+                    int(stats.get("total_reposts_seen", 0)),
+                    int(stats.get("total_replies_seen", 0)),
+                    int(stats.get("total_quotes_seen", 0)),
+                    int(stats.get("total_original_posts_seen", 0)),
+                    int(stats.get("total_other_reference_posts_seen", 0)),
+                ),
+            )
 
     def create_repost_event(self, repost_tweet_id: str, original_tweet_id: str) -> bool:
         with self._connect() as conn:
@@ -245,6 +300,19 @@ class RelayDB:
                 "SELECT COUNT(1) AS c FROM media_index WHERE media_type IN ('video', 'animated_gif')"
             ).fetchone()["c"]
             last_update_row = conn.execute("SELECT MAX(updated_at) AS m FROM repost_events").fetchone()
+            scan_totals = conn.execute(
+                """
+                SELECT
+                    cumulative_profile_posts_seen,
+                    cumulative_reposts_seen,
+                    cumulative_replies_seen,
+                    cumulative_quotes_seen,
+                    cumulative_original_posts_seen,
+                    cumulative_other_reference_posts_seen
+                FROM state
+                WHERE id = 1
+                """
+            ).fetchone()
 
         return {
             "db_path": self.db_path,
@@ -257,6 +325,14 @@ class RelayDB:
             "total_photos_seen": int(total_photos_seen),
             "total_videos_seen": int(total_videos_seen),
             "last_update": last_update_row["m"] if last_update_row else None,
+            "total_profile_posts_seen": int(scan_totals["cumulative_profile_posts_seen"]) if scan_totals else 0,
+            "total_reposts_seen": int(scan_totals["cumulative_reposts_seen"]) if scan_totals else 0,
+            "total_replies_seen": int(scan_totals["cumulative_replies_seen"]) if scan_totals else 0,
+            "total_quotes_seen": int(scan_totals["cumulative_quotes_seen"]) if scan_totals else 0,
+            "total_original_posts_seen": int(scan_totals["cumulative_original_posts_seen"]) if scan_totals else 0,
+            "total_other_reference_posts_seen": int(scan_totals["cumulative_other_reference_posts_seen"])
+            if scan_totals
+            else 0,
         }
 
     def list_events(self, limit: int = 500, status: str | None = None, text_query: str | None = None) -> list[dict[str, str | None]]:

@@ -74,9 +74,7 @@ class RelayService:
             return self._poll_with_stats(log_prefix="Polling", use_since_checkpoint=True)
 
     def overview_with_profile_stats(self) -> dict[str, int | str | None]:
-        overview = self.db.get_overview()
-        overview.update(self._last_profile_scan_stats)
-        return overview
+        return self.db.get_overview()
 
     def _poll_with_stats(self, log_prefix: str, use_since_checkpoint: bool) -> dict[str, int]:
         self._sync_checkpoint_scope_with_current_user()
@@ -94,6 +92,7 @@ class RelayService:
                 "total_other_reference_posts_seen": 0,
             }
         self._last_profile_scan_stats = profile_stats
+        self.db.add_profile_scan_totals(profile_stats)
         pic_count, video_count = self._count_media_types(reposts)
         if not reposts:
             return {"fetched": 0, "pics": 0, "videos": 0, "new": 0, "processed": 0, **profile_stats}
