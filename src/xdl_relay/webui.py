@@ -436,7 +436,10 @@ HTML_PAGE = """<!doctype html>
     async function loadOverview() {
       const o = await getJson('/api/overview');
       document.getElementById('stats').innerHTML = [
-        card('Total events', o.total_events),
+        card('Total posts seen', o.total_events),
+        card('Total media seen', o.total_media_seen || 0),
+        card('Photos seen', o.total_photos_seen || 0),
+        card('Videos seen', o.total_videos_seen || 0),
         card('Sent', o.sent_events),
         card('Failed', o.failed_events),
         card('Pending', o.pending_events),
