@@ -73,6 +73,24 @@ class TestXParsing(unittest.TestCase):
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].repost_tweet_id, "201")
+
+    def test_get_new_reposts_accepts_retweet_like_reference_types(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [{"id": "212", "text": "repost", "referenced_tweets": [{"type": "retweet", "id": "701"}]}],
+            "includes": {
+                "tweets": [{"id": "701", "author_id": "99", "text": "orig", "attachments": {"media_keys": ["3_701"]}}],
+                "media": [{"media_key": "3_701", "type": "photo", "url": "https://x/img.jpg"}],
+            },
+            "meta": {},
+        }
+
+        with patch("xdl_relay.x_client.get_json", return_value=payload):
+            events = client.get_new_reposts("1")
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].repost_tweet_id, "212")
+
     def test_extract_repost_events_preserves_media_key_when_some_media_missing(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
         payload = {
