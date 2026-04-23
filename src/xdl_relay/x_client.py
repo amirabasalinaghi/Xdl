@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from urllib.error import HTTPError
 from urllib.parse import unquote, urlencode
 
@@ -29,6 +30,7 @@ class XClient:
         self.max_pages = max_pages
         self.page_size = min(100, max(5, page_size))
         self.bearer_token = bearer_token
+        self.latest_profile_tweet_id: str | None = None
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
         events, _stats = self.get_new_reposts_with_stats(user_id=user_id, since_id=since_id)
@@ -45,6 +47,7 @@ class XClient:
             f"/users/{resolved_user_id}/tweets",
             since_id=since_id,
         )
+        self.latest_profile_tweet_id = self._max_tweet_id(profile_post_kinds.keys())
         post_stats = self._summarize_post_kinds(profile_post_kinds)
         logger.info(
             "Collected %s repost event(s) from monitored account feed (posts_seen=%s)",
@@ -134,6 +137,18 @@ class XClient:
             "original": not has_references,
             "other": has_references and not (is_repost or "replied_to" in reference_types or "quoted" in reference_types),
         }
+
+
+    def _max_tweet_id(self, tweet_ids: Iterable[str]) -> str | None:
+        highest: int | None = None
+        for tweet_id in tweet_ids:
+            try:
+                current = int(tweet_id)
+            except (TypeError, ValueError):
+                continue
+            if highest is None or current > highest:
+                highest = current
+        return str(highest) if highest is not None else None
 
     def _summarize_post_kinds(self, post_kinds: dict[str, dict[str, bool]]) -> dict[str, int]:
         return {

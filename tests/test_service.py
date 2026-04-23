@@ -20,6 +20,25 @@ class _FakeXClient:
         return self.events
 
 
+
+
+class _FakeXClientWithStats(_FakeXClient):
+    def __init__(self, events: list[RepostEvent], latest_profile_tweet_id: str | None) -> None:
+        super().__init__(events)
+        self.latest_profile_tweet_id = latest_profile_tweet_id
+
+    def get_new_reposts_with_stats(self, user_id: str, since_id: str | None = None) -> tuple[list[RepostEvent], dict[str, int]]:
+        self.calls.append((user_id, since_id))
+        return self.events, {
+            "total_profile_posts_seen": 5,
+            "total_reposts_seen": 5,
+            "total_replies_seen": 0,
+            "total_quotes_seen": 0,
+            "total_original_posts_seen": 0,
+            "total_other_reference_posts_seen": 0,
+        }
+
+
 class _FailingTelegramClient:
     def __init__(self) -> None:
         self.messages: list[str] = []
@@ -351,6 +370,31 @@ class TestServiceBehavior(unittest.TestCase):
             service.index_full_profile_with_stats()
 
             self.assertEqual(fake_x.calls, [("user", None)])
+
+    def test_polling_advances_checkpoint_even_without_relayable_media(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            fake_x = _FakeXClientWithStats([], latest_profile_tweet_id="901")
+            service.x_client = fake_x
+
+            result = service.poll_with_stats()
+
+            self.assertEqual(result["fetched"], 0)
+            self.assertEqual(service.db.get_last_seen_tweet_id(), "901")
+
+            fake_x.events = []
+            fake_x.latest_profile_tweet_id = "902"
+            service.poll_with_stats()
+            self.assertEqual(fake_x.calls[1], ("user", "901"))
+            self.assertEqual(service.db.get_last_seen_tweet_id(), "902")
 
     def test_process_once_reuses_indexed_media_for_same_original(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
