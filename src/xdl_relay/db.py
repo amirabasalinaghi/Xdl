@@ -230,6 +230,13 @@ class RelayDB:
             sent_events = conn.execute("SELECT COUNT(1) AS c FROM repost_events WHERE status = 'sent'").fetchone()["c"]
             failed_events = conn.execute("SELECT COUNT(1) AS c FROM repost_events WHERE status = 'failed'").fetchone()["c"]
             pending_events = conn.execute("SELECT COUNT(1) AS c FROM repost_events WHERE status = 'pending'").fetchone()["c"]
+            total_media_seen = conn.execute("SELECT COUNT(1) AS c FROM media_index").fetchone()["c"]
+            total_photos_seen = conn.execute(
+                "SELECT COUNT(1) AS c FROM media_index WHERE media_type = 'photo'"
+            ).fetchone()["c"]
+            total_videos_seen = conn.execute(
+                "SELECT COUNT(1) AS c FROM media_index WHERE media_type IN ('video', 'animated_gif')"
+            ).fetchone()["c"]
             last_update_row = conn.execute("SELECT MAX(updated_at) AS m FROM repost_events").fetchone()
 
         return {
@@ -239,6 +246,9 @@ class RelayDB:
             "sent_events": int(sent_events),
             "failed_events": int(failed_events),
             "pending_events": int(pending_events),
+            "total_media_seen": int(total_media_seen),
+            "total_photos_seen": int(total_photos_seen),
+            "total_videos_seen": int(total_videos_seen),
             "last_update": last_update_row["m"] if last_update_row else None,
         }
 
