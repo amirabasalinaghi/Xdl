@@ -69,6 +69,7 @@ class XClient:
 
     def _collect_reposts_for_endpoint(self, endpoint_path: str, since_id: str | None = None) -> list[RepostEvent]:
         events: list[RepostEvent] = []
+        tweets_seen = 0
         pagination_token: str | None = None
         pages = 0
         reached_page_limit = False
@@ -96,6 +97,7 @@ class XClient:
             if not tweets:
                 logger.debug("No tweets returned endpoint=%s page=%s", endpoint_path, pages + 1)
                 break
+            tweets_seen += len(tweets)
 
             events.extend(self._extract_repost_events(tweets, payload))
             pages += 1
@@ -111,6 +113,14 @@ class XClient:
                 "Increase X_MAX_PAGES to backfill more historical reposts.",
                 endpoint_path,
                 self.max_pages,
+            )
+        skipped_without_media = max(0, tweets_seen - len(events))
+        if skipped_without_media:
+            logger.info(
+                "Skipped %s post(s) from endpoint=%s because they had no relayable media. "
+                "This relay only emits events for posts/reposts that resolve to media.",
+                skipped_without_media,
+                endpoint_path,
             )
         logger.info("Collected %s repost event(s) from endpoint=%s", len(events), endpoint_path)
 
