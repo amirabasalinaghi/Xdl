@@ -46,7 +46,7 @@ Optional tuning environment variables:
 - `HTTP_RETRIES` (default `5`)
 - `HTTP_BACKOFF_SECONDS` (default `2.0`)
 - `MAX_MEDIA_BYTES` (default `209715200` = 200 MiB local download cap; Telegram/X API limits still apply)
-- `X_MAX_PAGES` (default `100`, up to ~10000 timeline items requested at max page size)
+- `X_MAX_PAGES` (default `100`; Web UI allows `1-1000`, up to ~100000 timeline items requested at max page size)
 - `X_PAGE_SIZE` (default `100`, controls `max_results` per timeline request; allowed `5-100`)
 - `MEDIA_DOWNLOAD_MODE` (default `both`; accepts `pic`, `video`, `both`)
 - `TELEGRAM_INCLUDE_CAPTION` (default `1`)
