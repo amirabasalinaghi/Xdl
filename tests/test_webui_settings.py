@@ -30,6 +30,8 @@ class TestWebUISettings(unittest.TestCase):
         self.assertIn("X API Page Size (5-100)", HTML_PAGE)
         self.assertIn("s.max_media_bytes || 52428800", HTML_PAGE)
         self.assertIn("Manual polling", HTML_PAGE)
+        self.assertIn("Retry failed", HTML_PAGE)
+        self.assertIn("/api/retry-failed", HTML_PAGE)
         self.assertIn("card('Last updated', formatDateTime(o.last_update))", HTML_PAGE)
         self.assertIn("card('Profile posts scanned', o.total_profile_posts_seen || 0)", HTML_PAGE)
         self.assertIn("card('Reposts seen', o.total_reposts_seen || 0)", HTML_PAGE)

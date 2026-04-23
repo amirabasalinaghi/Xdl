@@ -236,6 +236,7 @@ HTML_PAGE = """<!doctype html>
       </div>
       <div class=\"toolbar\">
         <button id=\"process\">Manual polling</button>
+        <button id=\"retry-failed\" class=\"btn-secondary\">Retry failed</button>
       </div>
     </div>
 
@@ -613,6 +614,21 @@ HTML_PAGE = """<!doctype html>
         btn.textContent = 'Manual polling';
       }
     });
+    document.getElementById('retry-failed').addEventListener('click', async () => {
+      const btn = document.getElementById('retry-failed');
+      btn.disabled = true;
+      btn.textContent = 'Retrying...';
+      try {
+        const result = await getJson('/api/retry-failed', { method: 'POST' });
+        await refreshAll();
+        toast(`Queued ${result.retried || 0} failed event(s) for retry.`, 'success');
+      } catch (err) {
+        toast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Retry failed';
+      }
+    });
 
     Promise.all([loadSettings(), refreshAll()]).catch(err => toast(err.message, 'error'));
 
@@ -792,6 +808,15 @@ class DashboardServer:
                         self._json_response(result)
                     except Exception as exc:
                         logger.exception("Full profile index failed: %s", exc)
+                        self._json_response({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                    return
+
+                if parsed.path == "/api/retry-failed":
+                    try:
+                        retried = relay_service.retry_failed_events()
+                        self._json_response({"retried": retried})
+                    except Exception as exc:
+                        logger.exception("Retry failed events request failed: %s", exc)
                         self._json_response({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
                     return
 

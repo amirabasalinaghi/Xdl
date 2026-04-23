@@ -14,6 +14,7 @@ from xdl_relay.telegram_client import TelegramClient
 from xdl_relay.x_client import XClient
 
 logger = logging.getLogger(__name__)
+MAX_AUTO_FAILED_RETRIES = 5
 RUN_TIMEOUT_SECONDS = 5 * 60
 
 
@@ -67,7 +68,7 @@ class RelayService:
         return self._run_poll_cycle(log_prefix="Manual")
 
     def index_full_profile_with_stats(self) -> dict[str, int]:
-        return self._run_poll_cycle(log_prefix="Full profile index")
+        return self._run_poll_cycle(log_prefix="Full profile index", use_checkpoint=False)
 
     def poll_with_stats(self) -> dict[str, int]:
         return self._run_poll_cycle(log_prefix="Polling")
@@ -75,11 +76,11 @@ class RelayService:
     def overview_with_profile_stats(self) -> dict[str, int | str | None]:
         return self.db.get_overview()
 
-    def _run_poll_cycle(self, log_prefix: str) -> dict[str, int]:
+    def _run_poll_cycle(self, log_prefix: str, use_checkpoint: bool = True) -> dict[str, int]:
         if not self._try_start_run(log_prefix=log_prefix):
             return self._empty_poll_result()
         try:
-            return self._poll_with_stats(log_prefix=log_prefix)
+            return self._poll_with_stats(log_prefix=log_prefix, use_checkpoint=use_checkpoint)
         finally:
             self._finish_run()
 
@@ -109,9 +110,9 @@ class RelayService:
         with self._run_state_lock:
             self._active_run_started_at = None
 
-    def _poll_with_stats(self, log_prefix: str) -> dict[str, int]:
+    def _poll_with_stats(self, log_prefix: str, use_checkpoint: bool = True) -> dict[str, int]:
         self._sync_checkpoint_scope_with_current_user()
-        since_id = None
+        since_id = self.db.get_last_seen_tweet_id() if use_checkpoint else None
         if hasattr(self.x_client, "get_new_reposts_with_stats"):
             reposts, profile_stats = self.x_client.get_new_reposts_with_stats(self.settings.x_user_id, since_id=since_id)
         else:
@@ -211,9 +212,19 @@ class RelayService:
             status = (self.db.get_repost_status(event.repost_tweet_id) or "").lower()
             if status != "failed":
                 return False, False
+            failure_count = self.db.get_repost_failure_count(event.repost_tweet_id)
+            if failure_count >= MAX_AUTO_FAILED_RETRIES:
+                logger.info(
+                    "Skipping repost=%s after %s failed attempt(s); waiting for manual retry",
+                    event.repost_tweet_id,
+                    failure_count,
+                )
+                return False, False
             logger.info(
-                "Retrying failed repost=%s",
+                "Retrying failed repost=%s attempt=%s/%s",
                 event.repost_tweet_id,
+                failure_count + 1,
+                MAX_AUTO_FAILED_RETRIES,
             )
             return False, self._deliver_event(event)
         return True, self._deliver_event(event)
@@ -285,11 +296,16 @@ class RelayService:
             self.db.mark_sent(event.repost_tweet_id, ",".join(str(mid) for mid in message_ids))
             return True
         except Exception as exc:
-            self.db.mark_failed(event.repost_tweet_id, str(exc))
-            if self.settings.telegram_failure_alerts:
+            failure_count = self.db.mark_failed(event.repost_tweet_id, str(exc))
+            should_notify = failure_count == 1 and not self.db.was_failure_notified(event.repost_tweet_id)
+            if self.settings.telegram_failure_alerts and should_notify:
                 self._notify_failure(event.repost_tweet_id, exc)
+                self.db.mark_failure_notified(event.repost_tweet_id)
             logger.exception("Failed processing repost %s", event.repost_tweet_id)
             return False
+
+    def retry_failed_events(self) -> int:
+        return self.db.reset_failed_attempts()
 
     def _resolve_cached_media_path(self, original_tweet_id: str, media_key: str, fallback_path: Path) -> Path | None:
         indexed_path = self.db.get_indexed_media_path(original_tweet_id, media_key)
