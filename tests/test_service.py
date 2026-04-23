@@ -13,8 +13,10 @@ from xdl_relay.service import RelayService
 class _FakeXClient:
     def __init__(self, events: list[RepostEvent]) -> None:
         self.events = events
+        self.calls: list[tuple[str, str | None]] = []
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
+        self.calls.append((user_id, since_id))
         return self.events
 
 
@@ -271,6 +273,44 @@ class TestServiceBehavior(unittest.TestCase):
 
             self.assertEqual(processed, 0)
             self.assertEqual(service.db.get_last_seen_tweet_id(), "450")
+
+    def test_polling_uses_last_seen_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            fake_x = _FakeXClient([])
+            service.x_client = fake_x
+            service.db.set_last_seen_tweet_id("777")
+
+            service.poll_with_stats()
+
+            self.assertEqual(fake_x.calls, [("user", "777")])
+
+    def test_full_profile_index_ignores_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            fake_x = _FakeXClient([])
+            service.x_client = fake_x
+            service.db.set_last_seen_tweet_id("777")
+
+            service.index_full_profile_with_stats()
+
+            self.assertEqual(fake_x.calls, [("user", None)])
 
     def test_process_once_reuses_indexed_media_for_same_original(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
