@@ -130,6 +130,15 @@ class RelayService:
         latest_profile_tweet_id = getattr(self.x_client, "latest_profile_tweet_id", None)
         reposts = [event for event in reposts if self._event_has_relayable_media(event)]
         pic_count, video_count = self._count_media_types(reposts)
+        if not latest_profile_tweet_id and reposts:
+            numeric_ids: list[int] = []
+            for event in reposts:
+                try:
+                    numeric_ids.append(int(event.repost_tweet_id))
+                except (TypeError, ValueError):
+                    continue
+            if numeric_ids:
+                latest_profile_tweet_id = str(max(numeric_ids))
         if not reposts:
             if latest_profile_tweet_id:
                 self.db.set_last_seen_tweet_id(str(latest_profile_tweet_id))
@@ -137,6 +146,7 @@ class RelayService:
 
         new_count = 0
         processed = 0
+        has_retryable_failures = False
         for event in reposts:
             logger.info(
                 "%s processing repost=%s original=%s media_count=%s",
@@ -145,15 +155,22 @@ class RelayService:
                 event.original_tweet_id,
                 len(event.media),
             )
-            created, succeeded = self._process_event(event)
+            created, succeeded, needs_retry = self._process_event(event)
             if created:
                 new_count += 1
             if succeeded:
                 processed += 1
-            self.db.set_last_seen_tweet_id(event.repost_tweet_id)
+            if needs_retry:
+                has_retryable_failures = True
 
-        if latest_profile_tweet_id:
+        if latest_profile_tweet_id and not has_retryable_failures:
             self.db.set_last_seen_tweet_id(str(latest_profile_tweet_id))
+        elif has_retryable_failures:
+            logger.warning(
+                "%s found retryable delivery failures; checkpoint not advanced to latest_profile_tweet_id=%s",
+                log_prefix,
+                latest_profile_tweet_id,
+            )
 
         return {
             "fetched": len(reposts),
@@ -212,12 +229,12 @@ class RelayService:
                 logger.exception("Polling cycle failed: %s", exc)
             time.sleep(self.settings.poll_interval_seconds)
 
-    def _process_event(self, event: RepostEvent) -> tuple[bool, bool]:
+    def _process_event(self, event: RepostEvent) -> tuple[bool, bool, bool]:
         created = self.db.create_repost_event(event.repost_tweet_id, event.original_tweet_id)
         if not created:
             status = (self.db.get_repost_status(event.repost_tweet_id) or "").lower()
             if status != "failed":
-                return False, False
+                return False, False, False
             failure_count = self.db.get_repost_failure_count(event.repost_tweet_id)
             if failure_count >= MAX_AUTO_FAILED_RETRIES:
                 logger.info(
@@ -225,15 +242,17 @@ class RelayService:
                     event.repost_tweet_id,
                     failure_count,
                 )
-                return False, False
+                return False, False, False
             logger.info(
                 "Retrying failed repost=%s attempt=%s/%s",
                 event.repost_tweet_id,
                 failure_count + 1,
                 MAX_AUTO_FAILED_RETRIES,
             )
-            return False, self._deliver_event(event)
-        return True, self._deliver_event(event)
+            succeeded = self._deliver_event(event)
+            return False, succeeded, not succeeded
+        succeeded = self._deliver_event(event)
+        return True, succeeded, not succeeded
 
     def _deliver_event(self, event: RepostEvent) -> bool:
         try:

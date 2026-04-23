@@ -95,7 +95,7 @@ class TestServiceBehavior(unittest.TestCase):
             self.assertEqual(service.db.get_monitored_user_id(), "user-two")
             self.assertEqual(service.db.get_overview()["total_events"], 0)
 
-    def test_failed_event_advances_last_seen(self) -> None:
+    def test_failed_event_keeps_checkpoint_for_retry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(
                 x_user_id="user",
@@ -107,7 +107,7 @@ class TestServiceBehavior(unittest.TestCase):
                 max_media_bytes=1024,
             )
             service = RelayService(settings)
-            service.x_client = _FakeXClient(
+            service.x_client = _FakeXClientWithStats(
                 [
                     RepostEvent(
                         repost_tweet_id="200",
@@ -117,15 +117,45 @@ class TestServiceBehavior(unittest.TestCase):
                         original_text="something cool",
                         media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
                     )
-                ]
+                ],
+                latest_profile_tweet_id="200",
             )
             telegram = _FailingTelegramClient()
             service.telegram_client = telegram
 
             processed = service.process_once()
             self.assertEqual(processed, 0)
-            self.assertEqual(service.db.get_last_seen_tweet_id(), "200")
+            self.assertIsNone(service.db.get_last_seen_tweet_id())
             self.assertTrue(telegram.messages)
+
+    def test_checkpoint_advances_after_max_failed_retries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+                max_media_bytes=1024,
+            )
+            service = RelayService(settings)
+            event = RepostEvent(
+                repost_tweet_id="200",
+                original_tweet_id="100",
+                original_author_id="abc",
+                repost_text="RT: something cool",
+                original_text="something cool",
+                media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
+            )
+            service.x_client = _FakeXClientWithStats([event], latest_profile_tweet_id="200")
+            service.telegram_client = _FailingTelegramClient()
+
+            for _ in range(6):
+                service.process_once()
+
+            self.assertEqual(service.db.get_repost_failure_count("200"), 5)
+            self.assertEqual(service.db.get_last_seen_tweet_id(), "200")
 
     def test_caption_contains_links(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
