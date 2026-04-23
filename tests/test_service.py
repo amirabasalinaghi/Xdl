@@ -213,6 +213,43 @@ class TestServiceBehavior(unittest.TestCase):
             self.assertEqual(result["new"], 2)
             self.assertEqual(result["processed"], 2)
 
+    def test_delivery_uses_http_retry_settings_for_downloads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+                http_timeout_seconds=17,
+                http_retries=4,
+                http_backoff_seconds=0.5,
+            )
+            service = RelayService(settings)
+            service.x_client = _FakeXClient(
+                [
+                    RepostEvent(
+                        repost_tweet_id="200",
+                        original_tweet_id="100",
+                        original_author_id="abc",
+                        repost_text="RT 1",
+                        original_text="one",
+                        media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
+                    )
+                ]
+            )
+            service.telegram_client = _SuccessfulTelegramClient()
+
+            with mock.patch("xdl_relay.service.download_file", return_value=Path(tmp) / "a.jpg") as dl_mock:
+                result = service.process_once_with_stats()
+
+            self.assertEqual(result["processed"], 1)
+            kwargs = dl_mock.call_args.kwargs
+            self.assertEqual(kwargs["timeout"], 17)
+            self.assertEqual(kwargs["retries"], 4)
+            self.assertEqual(kwargs["backoff_seconds"], 0.5)
+
     def test_process_once_runs_catch_up_scan_when_since_id_returns_empty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(
