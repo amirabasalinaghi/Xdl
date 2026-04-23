@@ -50,23 +50,24 @@ class RelayService:
 
     def process_once(self) -> int:
         with self._process_lock:
-            stats = self._poll_with_stats(log_prefix="Polling")
+            stats = self._poll_with_stats(log_prefix="Polling", use_since_checkpoint=True)
             return stats["processed"]
 
     def process_once_with_stats(self) -> dict[str, int]:
         with self._process_lock:
-            return self._poll_with_stats(log_prefix="Manual")
+            return self._poll_with_stats(log_prefix="Manual", use_since_checkpoint=True)
 
     def index_full_profile_with_stats(self) -> dict[str, int]:
         with self._process_lock:
-            return self._poll_with_stats(log_prefix="Full profile index")
+            return self._poll_with_stats(log_prefix="Full profile index", use_since_checkpoint=False)
 
     def poll_with_stats(self) -> dict[str, int]:
         with self._process_lock:
-            return self._poll_with_stats(log_prefix="Polling")
+            return self._poll_with_stats(log_prefix="Polling", use_since_checkpoint=True)
 
-    def _poll_with_stats(self, log_prefix: str) -> dict[str, int]:
-        reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
+    def _poll_with_stats(self, log_prefix: str, use_since_checkpoint: bool) -> dict[str, int]:
+        since_id = self.db.get_last_seen_tweet_id() if use_since_checkpoint else None
+        reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=since_id)
         pic_count, video_count = self._count_media_types(reposts)
         if not reposts:
             return {"fetched": 0, "pics": 0, "videos": 0, "new": 0, "processed": 0}
