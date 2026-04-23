@@ -326,7 +326,7 @@ HTML_PAGE = """<!doctype html>
         <div class=\"field\">
           <label for=\"x_page_size\">X API Page Size (5-100)</label>
           <input id=\"x_page_size\" type=\"number\" min=\"5\" max=\"100\" step=\"1\" />
-          <div class=\"help\">Number of timeline items requested per page. Allowed range: 5 to 100 items.</div>
+          <div class=\"help\">Number of account feed posts requested per page. Allowed range: 5 to 100 items.</div>
           <div class=\"saved-note\" id=\"saved_x_page_size\"></div>
         </div>
       </div>
