@@ -235,8 +235,7 @@ HTML_PAGE = """<!doctype html>
         <div class=\"muted subtitle\" id=\"live\">Live data from relay.db</div>
       </div>
       <div class=\"toolbar\">
-        <button id=\"process\">Process once now</button>
-        <button id=\"full-index\" class=\"btn-secondary\">Index full profile media</button>
+        <button id=\"process\">Manual polling</button>
       </div>
     </div>
 
@@ -334,7 +333,7 @@ HTML_PAGE = """<!doctype html>
       <div class=\"toolbar\">
         <button id=\"save-settings\">Save settings</button>
       </div>
-      <div class=\"muted\">Update connection details, then trigger a manual process or let polling run.</div>
+      <div class=\"muted\">Update connection details, then trigger manual polling or let automatic polling run.</div>
     </section>
 
     <div class=\"row\">
@@ -582,7 +581,7 @@ HTML_PAGE = """<!doctype html>
     document.getElementById('process').addEventListener('click', async () => {
       const btn = document.getElementById('process');
       btn.disabled = true;
-      btn.textContent = 'Processing...';
+      btn.textContent = 'Polling...';
       try {
         const result = await getJson('/api/process-once', { method: 'POST' });
         await refreshAll();
@@ -595,26 +594,7 @@ HTML_PAGE = """<!doctype html>
         toast(err.message, "error");
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Process once now';
-      }
-    });
-    document.getElementById('full-index').addEventListener('click', async () => {
-      const btn = document.getElementById('full-index');
-      btn.disabled = true;
-      btn.textContent = 'Indexing...';
-      try {
-        const result = await getJson('/api/index-full-profile', { method: 'POST' });
-        await refreshAll();
-        toast(
-          `Full profile index scanned ${result.fetched} tweet/repost item(s): ${result.pics} pic(s), ${result.videos} video(s). ` +
-          `Queued ${result.new} new item(s) and successfully forwarded ${result.processed}.`,
-          "success"
-        );
-      } catch (err) {
-        toast(err.message, "error");
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Index full profile media';
+        btn.textContent = 'Manual polling';
       }
     });
 
@@ -688,9 +668,16 @@ class DashboardServer:
         logger.info("Background poller started with interval=%ss", self.relay_service.settings.poll_interval_seconds)
         while not self._stop_event.is_set():
             try:
-                processed = self.relay_service.process_once()
-                if processed:
-                    logger.info("WebUI background poll processed %s event(s)", processed)
+                result = self.relay_service.poll_with_stats()
+                if result["fetched"] or result["processed"]:
+                    logger.info(
+                        "WebUI automatic polling scanned=%s new=%s processed=%s pics=%s videos=%s",
+                        result["fetched"],
+                        result["new"],
+                        result["processed"],
+                        result["pics"],
+                        result["videos"],
+                    )
             except Exception as exc:
                 logger.exception("WebUI background poll failed: %s", exc)
             self._stop_event.wait(self.relay_service.settings.poll_interval_seconds)
