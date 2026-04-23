@@ -223,7 +223,17 @@ class RelayService:
             files: list[Path] = []
             for idx, media in enumerate(selected_media):
                 suffix = ".mp4" if media.media_type != "photo" else ".jpg"
-                path = self.media_dir / event.repost_tweet_id / f"{idx}_{media.media_key}{suffix}"
+                path = self.media_dir / event.original_tweet_id / f"{media.media_key}{suffix}"
+                cached = self._resolve_cached_media_path(event.original_tweet_id, media.media_key, path)
+                if cached is not None:
+                    logger.info(
+                        "Reusing cached media original=%s key=%s path=%s",
+                        event.original_tweet_id,
+                        media.media_key,
+                        cached,
+                    )
+                    files.append(cached)
+                    continue
                 logger.info(
                     "Downloading media repost=%s idx=%s key=%s type=%s url=%s path=%s",
                     event.repost_tweet_id,
@@ -243,6 +253,13 @@ class RelayService:
                         backoff_seconds=self.settings.http_backoff_seconds,
                     )
                 )
+                self.db.upsert_media_index(
+                    original_tweet_id=event.original_tweet_id,
+                    media_key=media.media_key,
+                    media_type=media.media_type,
+                    source_url=media.url,
+                    file_path=str(files[-1]),
+                )
             logger.info("Sending %s files to Telegram for repost=%s", len(files), event.repost_tweet_id)
 
             message_ids = self.telegram_client.send_media(
@@ -258,6 +275,23 @@ class RelayService:
                 self._notify_failure(event.repost_tweet_id, exc)
             logger.exception("Failed processing repost %s", event.repost_tweet_id)
             return False
+
+    def _resolve_cached_media_path(self, original_tweet_id: str, media_key: str, fallback_path: Path) -> Path | None:
+        indexed_path = self.db.get_indexed_media_path(original_tweet_id, media_key)
+        if indexed_path:
+            indexed = Path(indexed_path)
+            if indexed.exists():
+                return indexed
+        if fallback_path.exists():
+            self.db.upsert_media_index(
+                original_tweet_id=original_tweet_id,
+                media_key=media_key,
+                media_type="unknown",
+                source_url="",
+                file_path=str(fallback_path),
+            )
+            return fallback_path
+        return None
 
     def _filter_media_by_mode(self, media_items: list[MediaItem]) -> list[MediaItem]:
         mode = (self.settings.media_download_mode or "both").lower()

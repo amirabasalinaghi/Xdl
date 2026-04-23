@@ -310,6 +310,51 @@ class TestServiceBehavior(unittest.TestCase):
             self.assertEqual(processed, 0)
             self.assertEqual(service.db.get_last_seen_tweet_id(), "500")
 
+    def test_process_once_reuses_indexed_media_for_same_original(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            media_item = MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")
+            service.x_client = _FakeXClient(
+                [
+                    RepostEvent(
+                        repost_tweet_id="200",
+                        original_tweet_id="100",
+                        original_author_id="abc",
+                        repost_text="first repost",
+                        original_text="orig",
+                        media=[media_item],
+                    ),
+                    RepostEvent(
+                        repost_tweet_id="201",
+                        original_tweet_id="100",
+                        original_author_id="abc",
+                        repost_text="second repost",
+                        original_text="orig",
+                        media=[media_item],
+                    ),
+                ]
+            )
+            service.telegram_client = _SuccessfulTelegramClient()
+
+            def _download(url: str, destination: Path, **kwargs: object) -> Path:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(b"img")
+                return destination
+
+            with mock.patch("xdl_relay.service.download_file", side_effect=_download) as dl_mock:
+                processed = service.process_once()
+
+            self.assertEqual(processed, 2)
+            self.assertEqual(dl_mock.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
