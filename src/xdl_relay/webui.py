@@ -26,7 +26,7 @@ MAX_HTTP_BACKOFF_SECONDS = 60.0
 MIN_MAX_MEDIA_BYTES = 1
 MAX_MAX_MEDIA_BYTES = 50 * 1024 * 1024
 MIN_X_MAX_PAGES = 1
-MAX_X_MAX_PAGES = 100
+MAX_X_MAX_PAGES = 1000
 MIN_X_PAGE_SIZE = 5
 MAX_X_PAGE_SIZE = 100
 
@@ -318,9 +318,9 @@ HTML_PAGE = """<!doctype html>
           <div class=\"saved-note\" id=\"saved_max_media_bytes\"></div>
         </div>
         <div class=\"field\">
-          <label for=\"x_max_pages\">X API Max Pages (1-100)</label>
-          <input id=\"x_max_pages\" type=\"number\" min=\"1\" max=\"100\" step=\"1\" />
-          <div class=\"help\">Maximum number of API pages fetched per sync cycle. Allowed range: 1 to 100 pages.</div>
+          <label for=\"x_max_pages\">X API Max Pages (1-1000)</label>
+          <input id=\"x_max_pages\" type=\"number\" min=\"1\" max=\"1000\" step=\"1\" />
+          <div class=\"help\">Maximum number of API pages fetched per sync cycle. Allowed range: 1 to 1000 pages.</div>
           <div class=\"saved-note\" id=\"saved_x_max_pages\"></div>
         </div>
         <div class=\"field\">
