@@ -14,11 +14,14 @@ from xdl_relay.telegram_client import TelegramClient
 from xdl_relay.x_client import XClient
 
 logger = logging.getLogger(__name__)
+RUN_TIMEOUT_SECONDS = 5 * 60
 
 
 class RelayService:
     def __init__(self, settings: Settings) -> None:
         self._process_lock = threading.Lock()
+        self._run_state_lock = threading.Lock()
+        self._active_run_started_at: float | None = None
         self.settings = settings
         self.db = RelayDB(settings.db_path)
         self.x_client = XClient(
@@ -57,28 +60,58 @@ class RelayService:
             self.media_dir.mkdir(parents=True, exist_ok=True)
 
     def process_once(self) -> int:
-        with self._process_lock:
-            stats = self._poll_with_stats(log_prefix="Polling", use_since_checkpoint=True)
-            return stats["processed"]
+        stats = self._run_poll_cycle(log_prefix="Polling")
+        return stats["processed"]
 
     def process_once_with_stats(self) -> dict[str, int]:
-        with self._process_lock:
-            return self._poll_with_stats(log_prefix="Manual", use_since_checkpoint=True)
+        return self._run_poll_cycle(log_prefix="Manual")
 
     def index_full_profile_with_stats(self) -> dict[str, int]:
-        with self._process_lock:
-            return self._poll_with_stats(log_prefix="Full profile index", use_since_checkpoint=False)
+        return self._run_poll_cycle(log_prefix="Full profile index")
 
     def poll_with_stats(self) -> dict[str, int]:
-        with self._process_lock:
-            return self._poll_with_stats(log_prefix="Polling", use_since_checkpoint=True)
+        return self._run_poll_cycle(log_prefix="Polling")
 
     def overview_with_profile_stats(self) -> dict[str, int | str | None]:
         return self.db.get_overview()
 
-    def _poll_with_stats(self, log_prefix: str, use_since_checkpoint: bool) -> dict[str, int]:
+    def _run_poll_cycle(self, log_prefix: str) -> dict[str, int]:
+        if not self._try_start_run(log_prefix=log_prefix):
+            return self._empty_poll_result()
+        try:
+            return self._poll_with_stats(log_prefix=log_prefix)
+        finally:
+            self._finish_run()
+
+    def _try_start_run(self, log_prefix: str) -> bool:
+        now = time.monotonic()
+        with self._run_state_lock:
+            if self._active_run_started_at is None:
+                self._active_run_started_at = now
+                return True
+            active_for = now - self._active_run_started_at
+            if active_for < RUN_TIMEOUT_SECONDS:
+                logger.info(
+                    "%s run skipped because another run is still active (active_for=%.1fs, timeout=%ss)",
+                    log_prefix,
+                    active_for,
+                    RUN_TIMEOUT_SECONDS,
+                )
+                return False
+            logger.warning(
+                "Previous run exceeded timeout (%ss). Starting a new run.",
+                RUN_TIMEOUT_SECONDS,
+            )
+            self._active_run_started_at = now
+            return True
+
+    def _finish_run(self) -> None:
+        with self._run_state_lock:
+            self._active_run_started_at = None
+
+    def _poll_with_stats(self, log_prefix: str) -> dict[str, int]:
         self._sync_checkpoint_scope_with_current_user()
-        since_id = self.db.get_last_seen_tweet_id() if use_since_checkpoint else None
+        since_id = None
         if hasattr(self.x_client, "get_new_reposts_with_stats"):
             reposts, profile_stats = self.x_client.get_new_reposts_with_stats(self.settings.x_user_id, since_id=since_id)
         else:
@@ -93,9 +126,10 @@ class RelayService:
             }
         self._last_profile_scan_stats = profile_stats
         self.db.add_profile_scan_totals(profile_stats)
+        reposts = [event for event in reposts if self._event_has_relayable_media(event)]
         pic_count, video_count = self._count_media_types(reposts)
         if not reposts:
-            return {"fetched": 0, "pics": 0, "videos": 0, "new": 0, "processed": 0, **profile_stats}
+            return self._empty_poll_result(profile_stats=profile_stats)
 
         new_count = 0
         processed = 0
@@ -121,6 +155,16 @@ class RelayService:
             "new": new_count,
             "processed": processed,
             **profile_stats,
+        }
+
+    def _empty_poll_result(self, profile_stats: dict[str, int] | None = None) -> dict[str, int]:
+        return {
+            "fetched": 0,
+            "pics": 0,
+            "videos": 0,
+            "new": 0,
+            "processed": 0,
+            **(profile_stats or self._last_profile_scan_stats),
         }
 
     def _sync_checkpoint_scope_with_current_user(self) -> None:
@@ -265,12 +309,20 @@ class RelayService:
         return None
 
     def _filter_media_by_mode(self, media_items: list[MediaItem]) -> list[MediaItem]:
+        media_items = [item for item in media_items if self._is_supported_media_type(item.media_type)]
         mode = (self.settings.media_download_mode or "both").lower()
         if mode == "pic":
             return [item for item in media_items if item.media_type == "photo"]
         if mode == "video":
             return [item for item in media_items if item.media_type != "photo"]
         return media_items
+
+    def _event_has_relayable_media(self, event: RepostEvent) -> bool:
+        return any(self._is_supported_media_type(media.media_type) for media in event.media)
+
+    @staticmethod
+    def _is_supported_media_type(media_type: str) -> bool:
+        return media_type in {"photo", "video", "animated_gif"}
 
     def _count_media_types(self, reposts: list[RepostEvent]) -> tuple[int, int]:
         pics = 0
