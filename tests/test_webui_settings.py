@@ -30,6 +30,8 @@ class TestWebUISettings(unittest.TestCase):
         self.assertIn("X API Page Size (5-100)", HTML_PAGE)
         self.assertIn("s.max_media_bytes || 52428800", HTML_PAGE)
         self.assertIn("Manual polling", HTML_PAGE)
+        self.assertIn("card('Last updated', formatDateTime(o.last_update))", HTML_PAGE)
+        self.assertIn("document.getElementById('pill-last').textContent = formatDateTime(o.last_update);", HTML_PAGE)
         self.assertNotIn("Index full profile media", HTML_PAGE)
         self.assertNotIn("Force refresh + retry unsent", HTML_PAGE)
 

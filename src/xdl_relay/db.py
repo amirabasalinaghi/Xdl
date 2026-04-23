@@ -98,6 +98,13 @@ class RelayDB:
                 (user_id,),
             )
 
+    def reset_runtime_history(self) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM repost_events")
+            conn.execute("DELETE FROM delivery_logs")
+            conn.execute("DELETE FROM media_hashes")
+            conn.execute("DELETE FROM media_index")
+
     def create_repost_event(self, repost_tweet_id: str, original_tweet_id: str) -> bool:
         with self._connect() as conn:
             try:

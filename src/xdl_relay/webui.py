@@ -444,11 +444,11 @@ HTML_PAGE = """<!doctype html>
         card('Failed', o.failed_events),
         card('Pending', o.pending_events),
         card('Last seen tweet', o.last_seen_tweet_id || '—'),
-        card('Last updated', o.last_update || '—')
+        card('Last updated', formatDateTime(o.last_update))
       ].join('');
       document.getElementById('live').textContent = `DB: ${o.db_path} • auto refresh every 10s`;
       document.getElementById('pill-failures').textContent = `${o.failed_events || 0}`;
-      document.getElementById('pill-last').textContent = o.last_update || '—';
+      document.getElementById('pill-last').textContent = formatDateTime(o.last_update);
       const health = (o.failed_events || 0) > 0 ? 'needs-attention' : 'healthy';
       const healthLabel = health === 'healthy' ? 'Healthy' : 'Needs attention';
       document.getElementById('pill-status').textContent = healthLabel;
