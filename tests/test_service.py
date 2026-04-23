@@ -213,6 +213,46 @@ class TestServiceBehavior(unittest.TestCase):
             self.assertEqual(result["new"], 2)
             self.assertEqual(result["processed"], 2)
 
+    def test_index_full_profile_with_stats_processes_only_new_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(
+                x_user_id="user",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=str(Path(tmp) / "relay.db"),
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            existing = RepostEvent(
+                repost_tweet_id="200",
+                original_tweet_id="100",
+                original_author_id="abc",
+                repost_text="RT existing",
+                original_text="existing",
+                media=[MediaItem(media_key="m1", media_type="photo", url="https://example.com/a.jpg")],
+            )
+            new_event = RepostEvent(
+                repost_tweet_id="201",
+                original_tweet_id="101",
+                original_author_id="def",
+                repost_text="RT new",
+                original_text="new",
+                media=[MediaItem(media_key="m2", media_type="video", url="https://example.com/v.mp4")],
+            )
+            service.db.create_repost_event("200", "100")
+            service.x_client = _FakeXClient([existing, new_event])
+            service.telegram_client = _SuccessfulTelegramClient()
+
+            with mock.patch("xdl_relay.service.download_file", return_value=Path(tmp) / "media.bin"):
+                result = service.index_full_profile_with_stats()
+
+            self.assertEqual(result["fetched"], 2)
+            self.assertEqual(result["pics"], 1)
+            self.assertEqual(result["videos"], 1)
+            self.assertEqual(result["new"], 1)
+            self.assertEqual(result["processed"], 1)
+
     def test_delivery_uses_http_retry_settings_for_downloads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(

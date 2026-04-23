@@ -186,6 +186,37 @@ class RelayService:
                 "new_processed": new_processed,
             }
 
+    def index_full_profile_with_stats(self) -> dict[str, int]:
+        with self._process_lock:
+            reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=None)
+            pic_count, video_count = self._count_media_types(reposts)
+            if not reposts:
+                return {"fetched": 0, "pics": 0, "videos": 0, "new": 0, "processed": 0}
+
+            new_count = 0
+            processed = 0
+            for event in reposts:
+                logger.info(
+                    "Full profile index processing repost=%s original=%s media_count=%s",
+                    event.repost_tweet_id,
+                    event.original_tweet_id,
+                    len(event.media),
+                )
+                created, succeeded = self._process_event(event)
+                if created:
+                    new_count += 1
+                if succeeded:
+                    processed += 1
+                self.db.set_last_seen_tweet_id(event.repost_tweet_id)
+
+            return {
+                "fetched": len(reposts),
+                "pics": pic_count,
+                "videos": video_count,
+                "new": new_count,
+                "processed": processed,
+            }
+
     def run_forever(self) -> None:
         logger.info("Starting relay with poll interval=%ss", self.settings.poll_interval_seconds)
         while True:

@@ -237,6 +237,7 @@ HTML_PAGE = """<!doctype html>
       <div class=\"toolbar\">
         <button id=\"process\">Process once now</button>
         <button id=\"force-refresh\" class=\"btn-secondary\">Force refresh + retry unsent</button>
+        <button id=\"full-index\" class=\"btn-secondary\">Index full profile media</button>
       </div>
     </div>
 
@@ -618,6 +619,25 @@ HTML_PAGE = """<!doctype html>
         btn.textContent = 'Force refresh + retry unsent';
       }
     });
+    document.getElementById('full-index').addEventListener('click', async () => {
+      const btn = document.getElementById('full-index');
+      btn.disabled = true;
+      btn.textContent = 'Indexing...';
+      try {
+        const result = await getJson('/api/index-full-profile', { method: 'POST' });
+        await refreshAll();
+        toast(
+          `Full profile index scanned ${result.fetched} tweet/repost item(s): ${result.pics} pic(s), ${result.videos} video(s). ` +
+          `Queued ${result.new} new item(s) and successfully forwarded ${result.processed}.`,
+          "success"
+        );
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Index full profile media';
+      }
+    });
 
     Promise.all([loadSettings(), refreshAll()]).catch(err => toast(err.message, 'error'));
 
@@ -790,6 +810,15 @@ class DashboardServer:
                         self._json_response(result)
                     except Exception as exc:
                         logger.exception("Force refresh + retry failed: %s", exc)
+                        self._json_response({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                    return
+
+                if parsed.path == "/api/index-full-profile":
+                    try:
+                        result = relay_service.index_full_profile_with_stats()
+                        self._json_response(result)
+                    except Exception as exc:
+                        logger.exception("Full profile index failed: %s", exc)
                         self._json_response({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
                     return
 
