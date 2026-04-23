@@ -31,6 +31,8 @@ class TestWebUISettings(unittest.TestCase):
         self.assertIn("s.max_media_bytes || 52428800", HTML_PAGE)
         self.assertIn("Manual polling", HTML_PAGE)
         self.assertIn("card('Last updated', formatDateTime(o.last_update))", HTML_PAGE)
+        self.assertIn("card('Total profile posts seen', o.total_profile_posts_seen || 0)", HTML_PAGE)
+        self.assertIn("card('Reposts seen', o.total_reposts_seen || 0)", HTML_PAGE)
         self.assertIn("document.getElementById('pill-last').textContent = formatDateTime(o.last_update);", HTML_PAGE)
         self.assertNotIn("Index full profile media", HTML_PAGE)
         self.assertNotIn("Force refresh + retry unsent", HTML_PAGE)

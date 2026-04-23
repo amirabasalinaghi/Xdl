@@ -32,6 +32,14 @@ class RelayService:
         self.telegram_client = TelegramClient(settings.telegram_bot_token)
         self.media_dir = Path(settings.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
+        self._last_profile_scan_stats: dict[str, int] = {
+            "total_profile_posts_seen": 0,
+            "total_reposts_seen": 0,
+            "total_replies_seen": 0,
+            "total_quotes_seen": 0,
+            "total_original_posts_seen": 0,
+            "total_other_reference_posts_seen": 0,
+        }
 
     def update_settings(self, settings: Settings) -> None:
         with self._process_lock:
@@ -65,13 +73,30 @@ class RelayService:
         with self._process_lock:
             return self._poll_with_stats(log_prefix="Polling", use_since_checkpoint=True)
 
+    def overview_with_profile_stats(self) -> dict[str, int | str | None]:
+        overview = self.db.get_overview()
+        overview.update(self._last_profile_scan_stats)
+        return overview
+
     def _poll_with_stats(self, log_prefix: str, use_since_checkpoint: bool) -> dict[str, int]:
         self._sync_checkpoint_scope_with_current_user()
         since_id = self.db.get_last_seen_tweet_id() if use_since_checkpoint else None
-        reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=since_id)
+        if hasattr(self.x_client, "get_new_reposts_with_stats"):
+            reposts, profile_stats = self.x_client.get_new_reposts_with_stats(self.settings.x_user_id, since_id=since_id)
+        else:
+            reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=since_id)
+            profile_stats = {
+                "total_profile_posts_seen": len(reposts),
+                "total_reposts_seen": 0,
+                "total_replies_seen": 0,
+                "total_quotes_seen": 0,
+                "total_original_posts_seen": 0,
+                "total_other_reference_posts_seen": 0,
+            }
+        self._last_profile_scan_stats = profile_stats
         pic_count, video_count = self._count_media_types(reposts)
         if not reposts:
-            return {"fetched": 0, "pics": 0, "videos": 0, "new": 0, "processed": 0}
+            return {"fetched": 0, "pics": 0, "videos": 0, "new": 0, "processed": 0, **profile_stats}
 
         new_count = 0
         processed = 0
@@ -96,6 +121,7 @@ class RelayService:
             "videos": video_count,
             "new": new_count,
             "processed": processed,
+            **profile_stats,
         }
 
     def _sync_checkpoint_scope_with_current_user(self) -> None:

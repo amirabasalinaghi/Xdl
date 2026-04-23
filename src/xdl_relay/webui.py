@@ -436,7 +436,13 @@ HTML_PAGE = """<!doctype html>
     async function loadOverview() {
       const o = await getJson('/api/overview');
       document.getElementById('stats').innerHTML = [
-        card('Total posts seen', o.total_events),
+        card('Total profile posts seen', o.total_profile_posts_seen || 0),
+        card('Reposts seen', o.total_reposts_seen || 0),
+        card('Replies seen', o.total_replies_seen || 0),
+        card('Quotes seen', o.total_quotes_seen || 0),
+        card('Original posts seen', o.total_original_posts_seen || 0),
+        card('Other referenced seen', o.total_other_reference_posts_seen || 0),
+        card('Relay media events stored', o.total_events),
         card('Total media seen', o.total_media_seen || 0),
         card('Photos seen', o.total_photos_seen || 0),
         card('Videos seen', o.total_videos_seen || 0),
@@ -589,7 +595,10 @@ HTML_PAGE = """<!doctype html>
         const result = await getJson('/api/process-once', { method: 'POST' });
         await refreshAll();
         toast(
-          `Refresh saw ${result.fetched} repost(s) total: ${result.pics} pic(s), ${result.videos} video(s), ` +
+          `Refresh saw ${result.total_profile_posts_seen || 0} profile post(s): ${result.total_reposts_seen || 0} repost(s), ` +
+          `${result.total_replies_seen || 0} repl${(result.total_replies_seen || 0) === 1 ? 'y' : 'ies'}, ` +
+          `${result.total_quotes_seen || 0} quote(s), and ${result.total_original_posts_seen || 0} original post(s). ` +
+          `Relayable media found in ${result.fetched} post(s): ${result.pics} pic(s), ${result.videos} video(s), ` +
           `${result.new} new. Successfully processed: ${result.processed}.`,
           "success"
         );
@@ -735,7 +744,7 @@ class DashboardServer:
                     return
 
                 if parsed.path == "/api/overview":
-                    self._json_response(relay_service.db.get_overview())
+                    self._json_response(relay_service.overview_with_profile_stats())
                     return
 
                 if parsed.path == "/api/events":
