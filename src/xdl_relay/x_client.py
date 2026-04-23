@@ -230,6 +230,11 @@ class XClient:
             )
 
             media_keys = source_tweet.get("attachments", {}).get("media_keys", [])
+            source_media_map = self._ensure_media_keys_available(
+                source_tweet=source_tweet,
+                media_map=source_media_map,
+                fetched_referenced_tweets=fetched_referenced_tweets,
+            )
             media = [
                 self._convert_media(source_media_map.get(media_key), fallback_key=media_key)
                 for media_key in media_keys
@@ -304,6 +309,33 @@ class XClient:
                 queue.append((next_tweet, next_media_map, depth + 1))
 
         return best_candidate
+
+    def _ensure_media_keys_available(
+        self,
+        source_tweet: dict,
+        media_map: dict[str, dict],
+        fetched_referenced_tweets: dict[str, tuple[dict, dict[str, dict]]],
+    ) -> dict[str, dict]:
+        media_keys = source_tweet.get("attachments", {}).get("media_keys", [])
+        if not media_keys:
+            return media_map
+        if all(media_key in media_map for media_key in media_keys):
+            return media_map
+
+        source_id = str(source_tweet.get("id", "") or "")
+        if not source_id:
+            return media_map
+
+        if source_id not in fetched_referenced_tweets:
+            fetched_referenced_tweets[source_id] = self._fetch_tweet_with_media(source_id)
+
+        fetched_tweet, fetched_media = fetched_referenced_tweets[source_id]
+        if not fetched_tweet:
+            return media_map
+
+        merged_media = dict(media_map)
+        merged_media.update(fetched_media)
+        return merged_media
 
     def _iter_reference_ids(self, references: list[dict]) -> list[str]:
         if not references:
