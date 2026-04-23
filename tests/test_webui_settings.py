@@ -26,7 +26,7 @@ class TestWebUISettings(unittest.TestCase):
         self.assertIn("HTTP Retries (1-10)", HTML_PAGE)
         self.assertIn("Retry Backoff (seconds, 0-60)", HTML_PAGE)
         self.assertIn("Max Media Size (bytes, 1-52,428,800)", HTML_PAGE)
-        self.assertIn("X API Max Pages (1-1000)", HTML_PAGE)
+        self.assertIn("X API Max Pages (5-1000)", HTML_PAGE)
         self.assertIn("X API Page Size (5-100)", HTML_PAGE)
         self.assertIn("s.max_media_bytes || 52428800", HTML_PAGE)
         self.assertIn("Manual polling", HTML_PAGE)

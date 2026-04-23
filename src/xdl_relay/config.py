@@ -47,8 +47,8 @@ class Settings:
             http_retries=int(os.getenv("HTTP_RETRIES", "5")),
             http_backoff_seconds=float(os.getenv("HTTP_BACKOFF_SECONDS", "2.0")),
             max_media_bytes=int(os.getenv("MAX_MEDIA_BYTES", str(200 * 1024 * 1024))),
-            x_max_pages=int(os.getenv("X_MAX_PAGES", "100")),
-            x_page_size=int(os.getenv("X_PAGE_SIZE", "100")),
+            x_max_pages=max(5, int(os.getenv("X_MAX_PAGES", "100"))),
+            x_page_size=min(100, max(5, int(os.getenv("X_PAGE_SIZE", "100")))),
             media_download_mode=os.getenv("MEDIA_DOWNLOAD_MODE", "both").lower(),
             telegram_include_caption=os.getenv("TELEGRAM_INCLUDE_CAPTION", "1").lower()
             in {"1", "true", "yes", "on"},

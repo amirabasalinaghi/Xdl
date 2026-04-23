@@ -336,5 +336,56 @@ class TestXParsing(unittest.TestCase):
         self.assertTrue(all("/users/1/tweets?" in url for url in requested_urls))
 
 
+    def test_extract_repost_events_batches_missing_referenced_tweets(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [
+                {"id": "501", "text": "rt1", "referenced_tweets": [{"type": "retweeted", "id": "9001"}]},
+                {"id": "502", "text": "rt2", "referenced_tweets": [{"type": "retweeted", "id": "9002"}]},
+            ],
+            "includes": {"tweets": [], "media": []},
+            "meta": {},
+        }
+
+        with patch.object(
+            client,
+            "_fetch_tweets_with_media_batch",
+            return_value={
+                "9001": (
+                    {"id": "9001", "author_id": "a1", "text": "orig1", "attachments": {"media_keys": ["3_1"]}},
+                    {"3_1": {"media_key": "3_1", "type": "photo", "url": "https://x/img1.jpg"}},
+                ),
+                "9002": (
+                    {"id": "9002", "author_id": "a2", "text": "orig2", "attachments": {"media_keys": ["3_2"]}},
+                    {"3_2": {"media_key": "3_2", "type": "photo", "url": "https://x/img2.jpg"}},
+                ),
+            },
+        ) as mock_batch, patch.object(client, "_fetch_tweet_with_media", return_value=({}, {})) as mock_single:
+            events = client._extract_repost_events(payload["data"], payload)
+
+        self.assertEqual(len(events), 2)
+        mock_batch.assert_called_once_with(["9001", "9002"])
+        mock_single.assert_not_called()
+
+    def test_fetch_tweets_with_media_batch_returns_missing_entries_as_empty(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [
+                {"id": "700", "author_id": "a", "text": "orig", "attachments": {"media_keys": ["3_700"]}},
+            ],
+            "includes": {
+                "media": [{"media_key": "3_700", "type": "photo", "url": "https://x/img700.jpg"}],
+            },
+        }
+
+        with patch("xdl_relay.x_client.get_json", return_value=payload):
+            result = client._fetch_tweets_with_media_batch(["700", "701"])
+
+        self.assertIn("700", result)
+        self.assertIn("701", result)
+        self.assertTrue(result["700"][0])
+        self.assertEqual(result["701"], ({}, {}))
+
+
 if __name__ == "__main__":
     unittest.main()

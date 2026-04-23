@@ -201,6 +201,22 @@ class XClient:
         included_media = {m["media_key"]: m for m in payload.get("includes", {}).get("media", []) if m.get("media_key")}
         fetched_referenced_tweets: dict[str, tuple[dict, dict[str, dict]]] = {}
 
+
+        missing_referenced_ids: list[str] = []
+        seen_missing: set[str] = set()
+        for tweet in tweets:
+            retweet_ref = self._find_repost_reference(tweet.get("referenced_tweets", []))
+            if not retweet_ref:
+                continue
+            ref_id = str(retweet_ref.get("id", "") or "")
+            if not ref_id or ref_id in included_tweets or ref_id in seen_missing:
+                continue
+            seen_missing.add(ref_id)
+            missing_referenced_ids.append(ref_id)
+
+        if missing_referenced_ids:
+            fetched_referenced_tweets.update(self._fetch_tweets_with_media_batch(missing_referenced_ids))
+
         for tweet in tweets:
             references = tweet.get("referenced_tweets", [])
             retweet_ref = self._find_repost_reference(references)
@@ -210,11 +226,12 @@ class XClient:
                 source_tweet = included_tweets.get(referenced_id)
                 source_media_map = included_media
                 if not source_tweet and referenced_id:
-                    if referenced_id not in fetched_referenced_tweets:
-                        fetched_referenced_tweets[referenced_id] = self._fetch_tweet_with_media(referenced_id)
-                    fetched_tweet, fetched_media = fetched_referenced_tweets[referenced_id]
-                    source_tweet = fetched_tweet
-                    source_media_map = fetched_media
+                    cached_tweet, cached_media = fetched_referenced_tweets.get(referenced_id, ({}, {}))
+                    if not cached_tweet:
+                        cached_tweet, cached_media = self._fetch_tweet_with_media(referenced_id)
+                        fetched_referenced_tweets[referenced_id] = (cached_tweet, cached_media)
+                    source_tweet = cached_tweet
+                    source_media_map = cached_media
                 if not source_tweet:
                     continue
             else:
@@ -383,6 +400,49 @@ class XClient:
             if media.get("media_key")
         }
         return tweet, media_map
+
+    def _fetch_tweets_with_media_batch(self, tweet_ids: list[str]) -> dict[str, tuple[dict, dict[str, dict]]]:
+        normalized_ids: list[str] = []
+        seen: set[str] = set()
+        for tweet_id in tweet_ids:
+            normalized = str(tweet_id or "").strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            normalized_ids.append(normalized)
+
+        if not normalized_ids:
+            return {}
+
+        params = {
+            "ids": ",".join(normalized_ids[:100]),
+            "tweet.fields": "text,author_id,attachments,referenced_tweets",
+            "expansions": "attachments.media_keys,referenced_tweets.id,referenced_tweets.id.attachments.media_keys",
+            "media.fields": "type,url,variants",
+        }
+        url = f"{self.API_BASE_URL}/tweets?{urlencode(params)}"
+        try:
+            payload = get_json(
+                url,
+                headers=self._auth_headers(),
+                timeout=self.timeout,
+                retries=self.retries,
+                backoff_seconds=self.backoff_seconds,
+            )
+        except Exception:
+            return {tweet_id: ({}, {}) for tweet_id in normalized_ids}
+
+        data_tweets = payload.get("data", []) or []
+        data_map = {str(tweet.get("id", "") or ""): tweet for tweet in data_tweets if tweet.get("id")}
+        media_map = {
+            media["media_key"]: media
+            for media in payload.get("includes", {}).get("media", [])
+            if media.get("media_key")
+        }
+        return {
+            tweet_id: (data_map.get(tweet_id, {}), media_map if tweet_id in data_map else {})
+            for tweet_id in normalized_ids
+        }
 
     def _resolve_user_id(self, user_id: str) -> str:
         normalized = user_id.strip()
