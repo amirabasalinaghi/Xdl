@@ -32,17 +32,26 @@ class XClient:
         self._reverse_timeline_enabled = True
 
     def get_new_reposts(self, user_id: str, since_id: str | None = None) -> list[RepostEvent]:
+        events, _stats = self.get_new_reposts_with_stats(user_id=user_id, since_id=since_id)
+        return events
+
+    def get_new_reposts_with_stats(
+        self,
+        user_id: str,
+        since_id: str | None = None,
+    ) -> tuple[list[RepostEvent], dict[str, int]]:
         resolved_user_id = self._resolve_user_id(user_id)
         logger.info("Fetching reposts for user_id=%s resolved_user_id=%s since_id=%s", user_id, resolved_user_id, since_id)
-        profile_events = self._collect_reposts_for_endpoint(
+        profile_events, profile_post_kinds = self._collect_reposts_for_endpoint(
             f"/users/{resolved_user_id}/tweets",
             since_id=since_id,
         )
         timeline_events: list[RepostEvent] = []
+        timeline_post_kinds: dict[str, dict[str, bool]] = {}
         timeline_endpoint = f"/users/{resolved_user_id}/timelines/reverse_chronological"
         if self._reverse_timeline_enabled:
             try:
-                timeline_events = self._collect_reposts_for_endpoint(
+                timeline_events, timeline_post_kinds = self._collect_reposts_for_endpoint(
                     timeline_endpoint,
                     since_id=since_id,
                 )
@@ -61,14 +70,28 @@ class XClient:
         merged_by_id = {event.repost_tweet_id: event for event in profile_events}
         merged_by_id.update({event.repost_tweet_id: event for event in timeline_events})
         merged = sorted(merged_by_id.values(), key=lambda event: int(event.repost_tweet_id))
+        merged_post_kinds = profile_post_kinds
+        for tweet_id, kinds in timeline_post_kinds.items():
+            if tweet_id not in merged_post_kinds:
+                merged_post_kinds[tweet_id] = kinds
+                continue
+            for kind_name, enabled in kinds.items():
+                merged_post_kinds[tweet_id][kind_name] = merged_post_kinds[tweet_id].get(kind_name, False) or enabled
+        post_stats = self._summarize_post_kinds(merged_post_kinds)
         logger.info(
-            "Collected %s unique repost event(s) across profile+timeline endpoints",
+            "Collected %s unique repost event(s) across profile+timeline endpoints (posts_seen=%s)",
             len(merged),
+            post_stats["total_profile_posts_seen"],
         )
-        return merged
+        return merged, post_stats
 
-    def _collect_reposts_for_endpoint(self, endpoint_path: str, since_id: str | None = None) -> list[RepostEvent]:
+    def _collect_reposts_for_endpoint(
+        self,
+        endpoint_path: str,
+        since_id: str | None = None,
+    ) -> tuple[list[RepostEvent], dict[str, dict[str, bool]]]:
         events: list[RepostEvent] = []
+        post_kinds: dict[str, dict[str, bool]] = {}
         tweets_seen = 0
         pagination_token: str | None = None
         pages = 0
@@ -98,6 +121,11 @@ class XClient:
                 logger.debug("No tweets returned endpoint=%s page=%s", endpoint_path, pages + 1)
                 break
             tweets_seen += len(tweets)
+            for tweet in tweets:
+                tweet_id = str(tweet.get("id", "") or "")
+                if not tweet_id:
+                    continue
+                post_kinds[tweet_id] = self._classify_tweet_kind(tweet)
 
             events.extend(self._extract_repost_events(tweets, payload))
             pages += 1
@@ -124,7 +152,30 @@ class XClient:
             )
         logger.info("Collected %s repost event(s) from endpoint=%s", len(events), endpoint_path)
 
-        return sorted(events, key=lambda e: int(e.repost_tweet_id))
+        return sorted(events, key=lambda e: int(e.repost_tweet_id)), post_kinds
+
+    def _classify_tweet_kind(self, tweet: dict) -> dict[str, bool]:
+        references = tweet.get("referenced_tweets", [])
+        has_references = bool(references)
+        reference_types = {str(ref.get("type", "")).lower() for ref in references if ref.get("type")}
+        is_repost = self._find_repost_reference(references) is not None
+        return {
+            "repost": is_repost,
+            "reply": "replied_to" in reference_types,
+            "quote": "quoted" in reference_types,
+            "original": not has_references,
+            "other": has_references and not (is_repost or "replied_to" in reference_types or "quoted" in reference_types),
+        }
+
+    def _summarize_post_kinds(self, post_kinds: dict[str, dict[str, bool]]) -> dict[str, int]:
+        return {
+            "total_profile_posts_seen": len(post_kinds),
+            "total_reposts_seen": sum(1 for kinds in post_kinds.values() if kinds.get("repost")),
+            "total_replies_seen": sum(1 for kinds in post_kinds.values() if kinds.get("reply")),
+            "total_quotes_seen": sum(1 for kinds in post_kinds.values() if kinds.get("quote")),
+            "total_original_posts_seen": sum(1 for kinds in post_kinds.values() if kinds.get("original")),
+            "total_other_reference_posts_seen": sum(1 for kinds in post_kinds.values() if kinds.get("other")),
+        }
 
     def _build_timeline_error_message(self, endpoint_path: str, exc: HTTPError) -> str:
         body_snippet = str(getattr(exc, "xdl_body_snippet", "") or "")

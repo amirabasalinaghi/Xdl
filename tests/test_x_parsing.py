@@ -91,6 +91,31 @@ class TestXParsing(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].repost_tweet_id, "212")
 
+    def test_get_new_reposts_with_stats_counts_profile_post_types(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [
+                {"id": "1", "text": "original", "author_id": "1"},
+                {"id": "2", "text": "reply", "referenced_tweets": [{"type": "replied_to", "id": "1"}]},
+                {"id": "3", "text": "quote", "referenced_tweets": [{"type": "quoted", "id": "1"}]},
+                {"id": "4", "text": "repost", "referenced_tweets": [{"type": "retweeted", "id": "1"}]},
+            ],
+            "includes": {
+                "tweets": [{"id": "1", "author_id": "1", "text": "original", "attachments": {"media_keys": ["3_1"]}}],
+                "media": [{"media_key": "3_1", "type": "photo", "url": "https://x/img1.jpg"}],
+            },
+            "meta": {},
+        }
+
+        with patch("xdl_relay.x_client.get_json", return_value=payload):
+            _events, stats = client.get_new_reposts_with_stats("1")
+
+        self.assertEqual(stats["total_profile_posts_seen"], 4)
+        self.assertEqual(stats["total_reposts_seen"], 1)
+        self.assertEqual(stats["total_replies_seen"], 1)
+        self.assertEqual(stats["total_quotes_seen"], 1)
+        self.assertEqual(stats["total_original_posts_seen"], 1)
+
     def test_extract_repost_events_preserves_media_key_when_some_media_missing(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
         payload = {
