@@ -52,6 +52,18 @@ class RelayDB:
                     file_path TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS media_index (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    original_tweet_id TEXT NOT NULL,
+                    media_key TEXT NOT NULL,
+                    media_type TEXT NOT NULL,
+                    source_url TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(original_tweet_id, media_key)
+                );
                 """
             )
 
@@ -113,6 +125,42 @@ class RelayDB:
                 VALUES (?, ?, ?)
                 """,
                 (repost_id, media_hash, file_path),
+            )
+
+    def get_indexed_media_path(self, original_tweet_id: str, media_key: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT file_path
+                FROM media_index
+                WHERE original_tweet_id = ? AND media_key = ?
+                LIMIT 1
+                """,
+                (original_tweet_id, media_key),
+            ).fetchone()
+        return str(row["file_path"]) if row and row["file_path"] else None
+
+    def upsert_media_index(
+        self,
+        original_tweet_id: str,
+        media_key: str,
+        media_type: str,
+        source_url: str,
+        file_path: str,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO media_index (original_tweet_id, media_key, media_type, source_url, file_path)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(original_tweet_id, media_key)
+                DO UPDATE SET
+                    media_type=excluded.media_type,
+                    source_url=excluded.source_url,
+                    file_path=excluded.file_path,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (original_tweet_id, media_key, media_type, source_url, file_path),
             )
 
     def list_stale_pending_events(self, stale_after_minutes: int) -> list[dict[str, str | None]]:
