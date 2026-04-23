@@ -66,6 +66,7 @@ class RelayService:
             return self._poll_with_stats(log_prefix="Polling", use_since_checkpoint=True)
 
     def _poll_with_stats(self, log_prefix: str, use_since_checkpoint: bool) -> dict[str, int]:
+        self._sync_checkpoint_scope_with_current_user()
         since_id = self.db.get_last_seen_tweet_id() if use_since_checkpoint else None
         reposts = self.x_client.get_new_reposts(self.settings.x_user_id, since_id=since_id)
         pic_count, video_count = self._count_media_types(reposts)
@@ -96,6 +97,32 @@ class RelayService:
             "new": new_count,
             "processed": processed,
         }
+
+    def _sync_checkpoint_scope_with_current_user(self) -> None:
+        current_user = self.settings.x_user_id.strip()
+        stored_user = self.db.get_monitored_user_id()
+        if not current_user:
+            return
+
+        if stored_user is None:
+            # One-time migration for legacy DBs where last_seen_tweet_id had no user scope.
+            if self.db.get_last_seen_tweet_id():
+                logger.warning(
+                    "Resetting legacy checkpoint because monitored user scope was not recorded. user=%s",
+                    current_user,
+                )
+                self.db.set_last_seen_tweet_id(None)
+            self.db.set_monitored_user_id(current_user)
+            return
+
+        if stored_user != current_user:
+            logger.warning(
+                "Monitored user changed from %s to %s. Resetting since_id checkpoint.",
+                stored_user,
+                current_user,
+            )
+            self.db.set_last_seen_tweet_id(None)
+            self.db.set_monitored_user_id(current_user)
 
     def run_forever(self) -> None:
         logger.info("Starting relay with poll interval=%ss", self.settings.poll_interval_seconds)
