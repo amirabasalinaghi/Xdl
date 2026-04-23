@@ -301,55 +301,62 @@ class XClient:
         included_media: dict[str, dict],
         fetched_referenced_tweets: dict[str, tuple[dict, dict[str, dict]]],
     ) -> tuple[dict, dict[str, dict]]:
-        current_tweet = source_tweet
-        current_media_map = source_media_map
-        seen_ids: set[str] = set()
+        start_id = str(source_tweet.get("id", "") or "")
+        seen_ids: set[str] = {start_id} if start_id else set()
+        queue: list[tuple[dict, dict[str, dict], int]] = [(source_tweet, source_media_map, 0)]
+        best_candidate = (source_tweet, source_media_map)
 
-        # Walk a short chain of related references (repost/quote/reply) so
-        # media attached to a parent/original post is not missed.
-        for _ in range(5):
+        # Walk related references (repost/quote/reply) breadth-first so media
+        # attached to any referenced parent/original post is not missed.
+        max_depth = 5
+        while queue:
+            current_tweet, current_media_map, depth = queue.pop(0)
             media_keys = current_tweet.get("attachments", {}).get("media_keys", [])
             if media_keys:
                 return current_tweet, current_media_map
+            best_candidate = (current_tweet, current_media_map)
+            if depth >= max_depth:
+                continue
 
-            current_id = str(current_tweet.get("id", "") or "")
-            if current_id:
-                seen_ids.add(current_id)
+            for next_ref_id in self._iter_reference_ids(current_tweet.get("referenced_tweets", [])):
+                if next_ref_id in seen_ids:
+                    continue
+                seen_ids.add(next_ref_id)
 
-            next_ref_id = self._find_next_reference_id(current_tweet.get("referenced_tweets", []), seen_ids)
-            if not next_ref_id:
-                break
+                next_tweet = included_tweets.get(next_ref_id)
+                next_media_map = included_media
+                if not next_tweet:
+                    if next_ref_id not in fetched_referenced_tweets:
+                        fetched_referenced_tweets[next_ref_id] = self._fetch_tweet_with_media(next_ref_id)
+                    fetched_tweet, fetched_media = fetched_referenced_tweets[next_ref_id]
+                    next_tweet = fetched_tweet
+                    next_media_map = fetched_media
+                if not next_tweet:
+                    continue
+                queue.append((next_tweet, next_media_map, depth + 1))
 
-            next_tweet = included_tweets.get(next_ref_id)
-            next_media_map = included_media
-            if not next_tweet:
-                if next_ref_id not in fetched_referenced_tweets:
-                    fetched_referenced_tweets[next_ref_id] = self._fetch_tweet_with_media(next_ref_id)
-                fetched_tweet, fetched_media = fetched_referenced_tweets[next_ref_id]
-                next_tweet = fetched_tweet
-                next_media_map = fetched_media
-            if not next_tweet:
-                break
+        return best_candidate
 
-            current_tweet = next_tweet
-            current_media_map = next_media_map
-
-        return current_tweet, current_media_map
-
-    def _find_next_reference_id(self, references: list[dict], seen_ids: set[str]) -> str:
+    def _iter_reference_ids(self, references: list[dict]) -> list[str]:
         if not references:
-            return ""
+            return []
+        ordered_ids: list[str] = []
+        seen: set[str] = set()
         priority = ("retweeted", "reposted", "quoted", "replied_to")
         for ref_type in priority:
-            match = next((ref for ref in references if str(ref.get("type", "")).lower() == ref_type), None)
-            ref_id = str((match or {}).get("id", "") or "")
-            if ref_id and ref_id not in seen_ids:
-                return ref_id
+            for ref in references:
+                if str(ref.get("type", "")).lower() != ref_type:
+                    continue
+                ref_id = str(ref.get("id", "") or "")
+                if ref_id and ref_id not in seen:
+                    ordered_ids.append(ref_id)
+                    seen.add(ref_id)
         for ref in references:
             ref_id = str(ref.get("id", "") or "")
-            if ref_id and ref_id not in seen_ids:
-                return ref_id
-        return ""
+            if ref_id and ref_id not in seen:
+                ordered_ids.append(ref_id)
+                seen.add(ref_id)
+        return ordered_ids
 
     def _fetch_tweet_with_media(self, tweet_id: str) -> tuple[dict, dict[str, dict]]:
         params = {

@@ -242,6 +242,42 @@ class TestXParsing(unittest.TestCase):
         self.assertEqual(events[0].media[0].url, "https://cdn/x.jpg")
         mock_fetch.assert_called_once_with("500")
 
+    def test_extract_repost_events_walks_all_references_for_media(self) -> None:
+        client = XClient(max_pages=1, bearer_token="token")
+        payload = {
+            "data": [
+                {
+                    "id": "100",
+                    "text": "complex repost",
+                    "referenced_tweets": [{"type": "retweeted", "id": "500"}],
+                }
+            ],
+            "includes": {
+                "tweets": [
+                    {
+                        "id": "500",
+                        "author_id": "99",
+                        "text": "mid",
+                        "referenced_tweets": [
+                            {"type": "quoted", "id": "700"},
+                            {"type": "replied_to", "id": "800"},
+                        ],
+                    },
+                    {"id": "700", "author_id": "42", "text": "no media branch"},
+                    {"id": "800", "author_id": "88", "text": "has media", "attachments": {"media_keys": ["3_8"]}},
+                ],
+                "media": [{"media_key": "3_8", "type": "photo", "url": "https://x/img8.jpg"}],
+            },
+            "meta": {},
+        }
+
+        events = client._extract_repost_events(payload["data"], payload)
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].repost_tweet_id, "100")
+        self.assertEqual(events[0].original_tweet_id, "800")
+        self.assertEqual(events[0].media[0].url, "https://x/img8.jpg")
+
     def test_get_new_reposts_timeline_401_has_actionable_error(self) -> None:
         client = XClient(max_pages=1, bearer_token="token")
         http_error = HTTPError(
