@@ -35,6 +35,17 @@ class TestRelayDB(unittest.TestCase):
             self.assertIn("101", unsent)
             self.assertNotIn("102", unsent)
 
+    def test_monitored_user_checkpoint_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "relay.db")
+            db = RelayDB(db_path)
+
+            self.assertIsNone(db.get_monitored_user_id())
+            db.set_monitored_user_id("user-a")
+            self.assertEqual(db.get_monitored_user_id(), "user-a")
+            db.set_last_seen_tweet_id(None)
+            self.assertIsNone(db.get_last_seen_tweet_id())
+
 
 if __name__ == "__main__":
     unittest.main()

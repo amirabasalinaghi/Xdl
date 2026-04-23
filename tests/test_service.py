@@ -38,6 +38,40 @@ class _SuccessfulTelegramClient:
 
 
 class TestServiceBehavior(unittest.TestCase):
+    def test_process_once_resets_since_id_when_user_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "relay.db")
+            settings = Settings(
+                x_user_id="user-one",
+                x_bearer_token="bearer",
+                telegram_bot_token="tg",
+                telegram_chat_id="chat",
+                db_path=db_path,
+                media_dir=str(Path(tmp) / "media"),
+            )
+            service = RelayService(settings)
+            service.db.set_monitored_user_id("user-one")
+            service.db.set_last_seen_tweet_id("999")
+            service.x_client = _FakeXClient([])
+
+            service.process_once()
+            self.assertEqual(service.x_client.calls[0], ("user-one", "999"))
+
+            service.update_settings(
+                Settings(
+                    x_user_id="user-two",
+                    x_bearer_token="bearer",
+                    telegram_bot_token="tg",
+                    telegram_chat_id="chat",
+                    db_path=db_path,
+                    media_dir=str(Path(tmp) / "media"),
+                )
+            )
+            service.x_client = _FakeXClient([])
+            service.process_once()
+            self.assertEqual(service.x_client.calls[0], ("user-two", None))
+            self.assertEqual(service.db.get_monitored_user_id(), "user-two")
+
     def test_failed_event_advances_last_seen(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(
@@ -287,6 +321,7 @@ class TestServiceBehavior(unittest.TestCase):
             service = RelayService(settings)
             fake_x = _FakeXClient([])
             service.x_client = fake_x
+            service.db.set_monitored_user_id("user")
             service.db.set_last_seen_tweet_id("777")
 
             service.poll_with_stats()
@@ -306,6 +341,7 @@ class TestServiceBehavior(unittest.TestCase):
             service = RelayService(settings)
             fake_x = _FakeXClient([])
             service.x_client = fake_x
+            service.db.set_monitored_user_id("user")
             service.db.set_last_seen_tweet_id("777")
 
             service.index_full_profile_with_stats()

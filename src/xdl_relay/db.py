@@ -23,7 +23,8 @@ class RelayDB:
                 """
                 CREATE TABLE IF NOT EXISTS state (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
-                    last_seen_tweet_id TEXT
+                    last_seen_tweet_id TEXT,
+                    monitored_user_id TEXT
                 );
 
                 INSERT OR IGNORE INTO state (id, last_seen_tweet_id) VALUES (1, NULL);
@@ -66,17 +67,35 @@ class RelayDB:
                 );
                 """
             )
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(state)").fetchall()
+            }
+            if "monitored_user_id" not in columns:
+                conn.execute("ALTER TABLE state ADD COLUMN monitored_user_id TEXT")
 
     def get_last_seen_tweet_id(self) -> str | None:
         with self._connect() as conn:
             row = conn.execute("SELECT last_seen_tweet_id FROM state WHERE id = 1").fetchone()
             return row["last_seen_tweet_id"] if row else None
 
-    def set_last_seen_tweet_id(self, tweet_id: str) -> None:
+    def set_last_seen_tweet_id(self, tweet_id: str | None) -> None:
         with self._connect() as conn:
             conn.execute(
                 "UPDATE state SET last_seen_tweet_id = ? WHERE id = 1",
                 (tweet_id,),
+            )
+
+    def get_monitored_user_id(self) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT monitored_user_id FROM state WHERE id = 1").fetchone()
+            return row["monitored_user_id"] if row else None
+
+    def set_monitored_user_id(self, user_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE state SET monitored_user_id = ? WHERE id = 1",
+                (user_id,),
             )
 
     def create_repost_event(self, repost_tweet_id: str, original_tweet_id: str) -> bool:
